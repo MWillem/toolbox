@@ -3,7 +3,7 @@
 import subprocess
 import json
 
-def bf_hydra_et_generer_json(ip_address, port, service, chemin_utilisateurs, chemin_mots_de_passe):
+def bf_hydra(ip_address, port, service, chemin_utilisateurs, chemin_mots_de_passe):
     nombre_sessions = input("Entrez le nombre de sessions que vous voulez lancer en simultané (laissez vide pour utiliser le nombre de session par défaut (5)) :")
     if not nombre_sessions:
         nombre_sessions = "5"
@@ -27,15 +27,20 @@ def bf_hydra_et_generer_json(ip_address, port, service, chemin_utilisateurs, che
             print("\nBruteForce réussi, voici les identifiants trouvés :")
             for cred in credentials_found:
                 print(cred)
-            credentials = {"ip_address": ip_address, "service": service, "port": port, "result": credentials_found}
-            with open("credentials.json", "a") as f:
-                json.dump(credentials, f, indent=4)
-                f.write("\n")
+            return credentials_found
         else:
             print("\nPas de couple d'identifiants trouvés")
-            
-        return json.dumps(credentials_found, indent=4)
+            return None
 
     except subprocess.CalledProcessError as e:
         print(f"Erreur lors du test de la vulnérabilité avec Hydra : {e}")
         return None
+
+def generer_json(credentials, nom_fichier):
+    if credentials:
+        with open(nom_fichier, "a") as f:
+            json.dump(credentials, f, indent=4)
+            f.write("\n")
+            return True
+    else:
+        return False

@@ -3,7 +3,7 @@
 import nmap
 import json
 
-def scan_ports_et_generer_json(ip_address):
+def scan_ports(ip_address):
     nm = nmap.PortScanner()
     nm.scan(hosts=ip_address, arguments='-sV -Pn')
 
@@ -30,4 +30,15 @@ def scan_ports_et_generer_json(ip_address):
 
         results.append(host_data)
 
-    return json.dumps(results, indent=4)
+    return results
+
+
+def scan_ports_et_generer_json(ip_address, nom_fichier):
+    results = scan_ports(ip_address)
+    json_results = json.dumps(results, indent=4)
+
+    # Enregistrer les résultats dans un fichier JSON
+    with open(nom_fichier, "w") as fichier:
+        fichier.write(json_results)
+
+    return json_results

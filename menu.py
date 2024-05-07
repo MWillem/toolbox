@@ -4,9 +4,15 @@ import sys
 import json
 
 # Assurez-vous que le dossier tools est ajouté au chemin de recherche des modules
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'tools')))
 
-from fonctionnalites.bruteforce import bf_hydra_et_generer_json
+# Importer la fonction nécessaire depuis chaque fichier
+from scan_reseau import scan_reseau, scan_reseau_et_generer_json
+from scan_port import scan_ports, scan_ports_et_generer_json
+from bruteforce import bf_hydra, generer_json
+from rapports import afficher_rapports
+from man import afficher_manuel as man_func
+
 
 def main():
     print("""
@@ -40,22 +46,24 @@ def main():
             print(resultats_json)
         elif choix == '3':
             ip_address = input("Entrez une adresse IP à scanner : ")
-            service = input("Entrez le numéro de port ou le service à rechercher (ex: 21 pour FTP, ssh pour SSH) : ")
-            chemin_utilisateurs = input("Entrez le chemin de la bibliothèque des utilisateurs (laissez vide pour utiliser /usr/share/wordlists/rockyou2.txt) : ")
-            if not chemin_utilisateurs:
-                chemin_utilisateurs = "/usr/share/wordlists/rockyou2.txt"
-            chemin_mots_de_passe = input("Entrez le chemin de la bibliothèque des mots de passe (laissez vide pour utiliser /usr/share/wordlists/rockyou2.txt) : ")
-            if not chemin_mots_de_passe:
-                chemin_mots_de_passe = "/usr/share/wordlists/rockyou2.txt"
-            resultats_json = bf_hydra_et_generer_json(ip_address, service, chemin_utilisateurs, chemin_mots_de_passe)
-            print("Résultats du BruteForce (format JSON) :")
-            print(resultats_json)
-        elif choix == '4':
-            rapports()
+            port = input("Entrez le numéro de port : ")
+            service = input("Entrez le service : ")
+            chemin_utilisateurs = input("Entrez le chemin des utilisateurs : ")
+            chemin_mots_de_passe = input("Entrez le chemin des mots de passe : ")
+            
+            credentials = bf_hydra(ip_address, port, service, chemin_utilisateurs, chemin_mots_de_passe)
+            
+            if credentials:
+                nom_fichier = input("Entrez le nom du fichier JSON : ")
+                generer_json(credentials, nom_fichier)
+        if choix == '4':
+            afficher_rapports()
         elif choix == '5':
-            man()
+            man_func()
         elif choix == '6':
-            quitter()
+            print("Merci d'avoir utilisé l'outil. Au revoir !")
+            break
+
         else:
             print("Choix invalide. Veuillez choisir un numéro entre 1 et 6.")
 

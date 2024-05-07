@@ -16,7 +16,13 @@ def scan_reseau(adresse_ip):
 
     return list(adresses_ip)
 
-def scan_reseau_et_generer_json(adresse_ip):
+def scan_reseau_et_generer_json(adresse_ip, nom_fichier):
     adresses_ip = scan_reseau(adresse_ip)
     resultats = {"adresse_ip": adresse_ip, "adresses_trouvees": adresses_ip}
-    return json.dumps(resultats, indent=4)
+    json_resultats = json.dumps(resultats, indent=4)
+
+    # Enregistrer les résultats dans un fichier JSON
+    with open(nom_fichier, "w") as fichier:
+        fichier.write(json_resultats)
+
+    return json_resultats
