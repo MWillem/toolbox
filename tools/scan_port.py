@@ -1,44 +1,61 @@
-#!/usr/bin/python3
-
-import nmap
-import json
+import subprocess
+import ipaddress
+import os
 
 def scan_ports(ip_address):
-    nm = nmap.PortScanner()
-    nm.scan(hosts=ip_address, arguments='-sV -Pn')
+    """
+    Utilise NMAP pour scanner les ports ouverts d'une adresse IP donnée, affiche les résultats en direct
+    et sauvegarde la sortie dans un fichier texte.
+    """
+    try:
+        # Valide l'adresse IP
+        ipaddress.ip_address(ip_address)
+    except ValueError:
+        print("Adresse IP invalide.")
+        return
 
-    results = []
+    command = ["nmap", "-sV", "-Pn", ip_address]
+    output_lines = []  # Liste pour stocker la sortie de NMAP
 
-    # Récupérer les résultats du scan
-    for host in nm.all_hosts():
-        host_data = {"host": host, "ports": []}
+    try:
+        # Démarrage du processus NMAP
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-        for proto in nm[host].all_protocols():
-            ports = nm[host][proto].keys()
+        # Lecture et affichage des résultats en temps réel
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                print(output.strip())
+                output_lines.append(output.strip())
 
-            for port in ports:
-                port_state = nm[host][proto][port]['state']
+        # Vérifie s'il y a des erreurs
+        error = process.stderr.read()
+        if error:
+            print("Erreur lors du scan:", error)
 
-                if port_state == 'open':
-                    port_data = {
-                        "port": port,
-                        "state": port_state,
-                        "service": nm[host][proto][port]['name'],
-                        "version": nm[host][proto][port]['version']
-                    }
-                    host_data["ports"].append(port_data)
+    except Exception as e:
+        print(f"Erreur lors de l'exécution de NMAP: {e}")
 
-        results.append(host_data)
+    return output_lines
 
-    return results
-
-
-def scan_ports_et_generer_json(ip_address, nom_fichier):
+def scan_ports_generer_json(ip_address, nom_fichier):
+    """
+    Exécute le scan des ports et sauvegarde les résultats dans un fichier spécifié dans le dossier des rapports.
+    L'en-tête du fichier contiendra "SCAN DE PORTS - (avec adresses IP cibles)".
+    """
     results = scan_ports(ip_address)
-    json_results = json.dumps(results, indent=4)
+    if not results:
+        print("Aucun résultat de scan de ports disponible.")
+        return
 
-    # Enregistrer les résultats dans un fichier JSON
-    with open(nom_fichier, "w") as fichier:
-        fichier.write(json_results)
-
-    return json_results
+    chemin_complet = os.path.join("/home/kali/Documents/toolbox/rapports/", nom_fichier)
+    try:
+        with open(chemin_complet, "w") as fichier:
+            # Écrire l'en-tête avec l'adresse IP cible
+            fichier.write(f"***************************************\nSCAN DE PORTS - {ip_address}\n***************************************\n\n")
+            fichier.write("\n".join(results))
+        print(f"Résultats sauvegardés dans {chemin_complet}")
+    except IOError as e:
+        print(f"Erreur lors de l'enregistrement des résultats dans le fichier : {e}")
