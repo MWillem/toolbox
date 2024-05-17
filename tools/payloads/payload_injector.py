@@ -1,6 +1,7 @@
 from backdoor import reverse_shell
 
-def payload_injector():
+def payload_injector(chemin_rapports):
+    """Affiche le menu pour l'injection de payloads."""
     print("""
   ___ _   _     _ _____ ____ _____ ___ ___  _   _       _        ____   _ __   ___     ___    _    ____  
  |_ _| \ | |   | | ____/ ___|_   _|_ _/ _ \| \ | |   __| | ___  |  _ \ / \\ \ / / |   / _ \  / \  |  _ \ 
@@ -17,7 +18,7 @@ def payload_injector():
 
         if choix_payload == '1':
             try:
-                reverse_shell()
+                reverse_shell(chemin_rapports)
                 print("Payload injecté avec succès.")
             except Exception as e:
                 print(f"Erreur lors de l'injection du payload : {e}")
@@ -29,3 +30,7 @@ def payload_injector():
             print("Choix invalide. Veuillez réessayer.")
 
         input("Appuyez sur Entrée pour continuer...")
+
+if __name__ == "__main__":
+    chemin_rapports = os.path.join(os.path.dirname(__file__), 'rapports')
+    payload_injector(chemin_rapports)

@@ -2,6 +2,7 @@ import os
 import sys
 
 def configurer_chemins():
+    """Configure les chemins des répertoires tools et payloads."""
     chemin_base = os.path.dirname(__file__)
     chemin_tools = os.path.abspath(os.path.join(chemin_base, 'tools'))
     sys.path.append(chemin_tools)
@@ -10,10 +11,28 @@ def configurer_chemins():
     sys.path.append(chemin_payloads)
 
 def clear_screen():
+    """Efface l'écran."""
     if os.name == 'nt':  # Windows
         os.system('cls')
     else:  # Unix/Linux/Mac
         os.system('clear')
+
+def afficher_conditions_utilisation():
+    """Affiche les conditions d'utilisation et demande l'accord de l'utilisateur."""
+    conditions = """
+    ************************** CONDITIONS D'UTILISATION **************************
+
+    Cet outil est conçu uniquement pour les tests de pénétration légaux et éthiques.
+    Toute utilisation à des fins illégales est strictement interdite et peut entraîner
+    des poursuites pénales. En utilisant cet outil, vous acceptez d'être responsable
+    de vos actions et de respecter toutes les lois et réglementations applicables.
+
+    Acceptez-vous ces conditions ? (o/n) : 
+    ******************************************************************************
+    """
+    print(conditions)
+    choix = input().strip().lower()
+    return choix == 'o'
 
 configurer_chemins()
 
@@ -25,9 +44,18 @@ from rapports import gestion_rapports
 from man import afficher_manuel 
 
 def main():
+    """Fonction principale pour afficher le menu et gérer les choix de l'utilisateur."""
+    if not afficher_conditions_utilisation():
+        print("Vous devez accepter les conditions d'utilisation pour utiliser cet outil.")
+        return
+
+    chemin_rapports = os.path.join(os.path.dirname(__file__), 'rapports')
+    
+    if not os.path.exists(chemin_rapports):
+        os.makedirs(chemin_rapports)
 
     while True:
-        clear_screen()  # Use the clear_screen function
+        clear_screen()  # Utilise la fonction clear_screen pour effacer l'écran
         print("""                                        
   _____ ___   ___  _     ____   _____  __
  |_   _/ _ \ / _ \| |   | __ ) / _ \ \/ /
@@ -36,7 +64,7 @@ def main():
    |_| \___/ \___/|_____|____/ \___/_/\_\ 
 """)
         print("Bienvenue dans la Toolbox de Pentest")
-        print("1. Maaping réseau")
+        print("1. Mappage réseau")
         print("2. Scan de ports")
         print("3. BruteForce")
         print("4. Injecteur de Payload")
@@ -46,15 +74,14 @@ def main():
         choix = input("Entrez votre choix : ")
 
         if choix == "1":
-            mapping_reseau_main()
+            mapping_reseau_main(chemin_rapports)
         elif choix == '2':
-            scan_ports_main()
+            scan_ports_main(chemin_rapports)
         elif choix == '3':
-            bruteforce_main()
+            bruteforce_main(chemin_rapports)
         elif choix == '4':
-            payload_injector()
+            payload_injector(chemin_rapports)
         elif choix == '5':
-            chemin_rapports = "/home/kali/Documents/toolbox/rapports/"
             gestion_rapports(chemin_rapports)
         elif choix == '6':
             afficher_manuel()

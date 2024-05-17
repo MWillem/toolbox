@@ -1,34 +1,52 @@
 #!/usr/bin/python3
 
 def afficher_manuel():
+    """Affiche le manuel d'utilisation de chaque outil."""
     print("""
  _______ _______ __   _ _     _ _______                         
  |  |  | |_____| | \  | |     | |______ |                       
  |  |  | |     | |  \_| |_____| |______ |_____
     """)
-    """Affiche le manuel d'utilisation de chaque outil."""
     manuel = """
+    Conditions d'utilisation :
+        Cet outil est conçu uniquement pour les tests de pénétration légaux et éthiques.
+        Toute utilisation à des fins illégales est strictement interdite et peut entraîner
+        des poursuites pénales. En utilisant cet outil, vous acceptez d'être responsable
+        de vos actions et de respecter toutes les lois et réglementations applicables.
 
-    1. Scan de ports :
+    Description de la Toolbox :
+        La toolbox permet un suivi logique d'un test d'intrusion qui commence par un mappage réseau, 
+        continue avec un scan de ports pour trouver les services vulnérables, puis effectue une attaque
+        par force brute sur les services vulnérables pour récupérer les identifiants et enfin initie
+        une connexion sur ce service pour y déposer une backdoor. La génération de rapports est intégrée
+        pour permettre de retracer le parcours du pentest avec les informations récupérées et les processus
+        réussis ou non.
+
+    1. Mappage réseau :
+        - But : Scanner les hôtes actifs sur un réseau spécifié.
+        - Utilisation : Entrez l'adresse IP avec le masque de sous-réseau (ex : 192.168.1.0/24).
+
+    2. Scan de ports :
         - But : Scanner les ports ouverts sur une adresse IP spécifiée.
         - Utilisation : Entrez une adresse IP pour lancer le scan.
 
-    2. BruteForce :
-        - But : Effectuer une attaque de BruteForce sur un service spécifié.
-        - Utilisation : Entrez une adresse IP, le numéro de port ou le service à cibler, et les chemins vers les fichiers de noms d'utilisateur et de mots de passe.
+    3. BruteForce :
+        - But : Effectuer une attaque par force brute sur un service spécifié.
+        - Utilisation : Entrez une adresse IP, le numéro de port ou le service à cibler, 
+          et les chemins vers les fichiers de noms d'utilisateur et de mots de passe.
 
-    3. Injecteur de payloads : 
-        - But : automatisation d'injection de payloads
-        - Utilisation : Backdoor : encours de développement
+    4. Injecteur de payloads : 
+        - But : Automatiser l'injection de payloads.
+        - Utilisation : Choisissez l'option "Injecter une backdoor" et suivez les instructions.
 
-    4. Rapports :
-        - But : Accéder aux rapports précédemment générés.
-        - Utilisation : Choisissez cette option pour afficher la liste des rapports disponibles.
+    5. Gestion des rapports :
+        - But : Accéder aux rapports générés précédemment.
+        - Utilisation : Choisissez cette option pour afficher, supprimer ou fusionner les rapports disponibles.
 
-    5. Manuel d'utilisation :
+    6. Manuel d'utilisation :
         - But : Afficher ce manuel d'utilisation.
 
-    6. Quitter :
+    7. Quitter :
         - But : Quitter l'application.
     """
     print(manuel)

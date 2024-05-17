@@ -2,6 +2,7 @@ import os
 import datetime
 
 def list_backdoors(chemin_vers_dossier_rapports):
+    """Liste les fichiers de rapport disponibles."""
     fichiers_rapports = os.listdir(chemin_vers_dossier_rapports)
     fichiers_rapports.sort()
     if not fichiers_rapports:
@@ -13,6 +14,7 @@ def list_backdoors(chemin_vers_dossier_rapports):
     return fichiers_rapports
 
 def choisir_rapport(fichiers_rapports):
+    """Permet à l'utilisateur de choisir un rapport parmi les fichiers listés."""
     if fichiers_rapports:
         choix = int(input("Choisissez un rapport par numéro, ou 0 pour quitter : "))
         if choix == 0:
@@ -21,6 +23,7 @@ def choisir_rapport(fichiers_rapports):
     return None
 
 def afficher_rapport(chemin_rapport):
+    """Affiche le contenu d'un rapport."""
     if os.path.exists(chemin_rapport):
         with open(chemin_rapport, "r") as fichier:
             print(f"\nContenu de {os.path.basename(chemin_rapport)}:")
@@ -29,6 +32,7 @@ def afficher_rapport(chemin_rapport):
         print("Le fichier spécifié n'existe pas.")
 
 def supprimer_rapport(chemin_rapport):
+    """Supprime un rapport spécifié."""
     if os.path.exists(chemin_rapport):
         os.remove(chemin_rapport)
         print(f"Le rapport {os.path.basename(chemin_rapport)} a été supprimé.")
@@ -36,19 +40,24 @@ def supprimer_rapport(chemin_rapport):
         print("Le rapport spécifié n'existe pas.")
 
 def fusionner_rapports(chemin_vers_dossier_rapports, fichiers_rapports):
+    """Fusionne plusieurs rapports en un seul fichier."""
     print("Sélectionnez les rapports à fusionner par numéro, séparés par une virgule (ex: 1,3,5):")
     indices = input().split(',')
     nom_fichier_final = input("Entrez le nom du fichier final : ")
     chemin_final = os.path.join(chemin_vers_dossier_rapports, nom_fichier_final)
 
     with open(chemin_final, 'w') as fichier_final:
+        fichier_final.write(f"Titre du rapport: {nom_fichier_final}\n\n")
+        fichier_final.write("Résultats fusionnés des fichiers:\n\n")
         for index in indices:
             chemin_fichier = os.path.join(chemin_vers_dossier_rapports, fichiers_rapports[int(index) - 1])
             with open(chemin_fichier, 'r') as fichier:
                 fichier_final.write(fichier.read() + "\n")
+        fichier_final.write("\nConclusion : (à compléter par l'utilisateur)\n")
         print(f"Fichiers fusionnés en {nom_fichier_final}.")
 
 def gestion_rapports(chemin_rapports):
+    """Gère les rapports : affichage, suppression, fusion."""
     print("""
   ______ _______  _____   _____   _____   ______ _______ _______
  |_____/ |_____| |_____] |_____] |     | |_____/    |    |______
@@ -73,4 +82,5 @@ def gestion_rapports(chemin_rapports):
             break
 
 if __name__ == "__main__":
-    gestion_rapports()
+    chemin_rapports = os.path.join(os.path.dirname(__file__), 'rapports')
+    gestion_rapports(chemin_rapports)
