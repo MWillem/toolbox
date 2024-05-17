@@ -2,6 +2,7 @@ markdown
 
 # Toolbox de Pentest
     Bienvenue dans la Toolbox de Pentest, une suite d'outils automatisés pour réaliser des tests de pénétration. Cette toolbox        inclut des fonctionnalités pour le mapping réseau, le scan de ports, le brute force, l'injection de payloads, et la gestion       des rapports.
+                                                                                                        Maréchaux Willem
 
 ## Structure de la Toolbox
 
