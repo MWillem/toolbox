@@ -27,6 +27,9 @@ Python 3
 nmap
 hydra
 
+Dictionnaire Rockyou.txt à installer pour le fonctionnement de hydra : 
+```https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt```
+
 ## Installation :
 Clonez le dépôt GitHub sur votre machine locale :
 
@@ -43,6 +46,8 @@ Clonez le dépôt GitHub sur votre machine locale :
 Pour lancer la toolbox, exécutez le script menu.py.
 
     python3 menu.py
+
+Pour la partie injection Payloads, le dossier ``` toolbox/tools/payloads/bibli_backdoor/``` est un emplacement dans lequel vous ajouterez vos scripts de backdoor vous même. Elles seront lister lors de l'utilisation de l'outils.
 
 ## Fonctionnalités :
 Mapping réseau : Effectue un mapping réseau en utilisant Nmap.
