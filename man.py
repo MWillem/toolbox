@@ -38,6 +38,13 @@ def afficher_manuel():
     4. Injecteur de payloads : 
         - But : Automatiser l'injection de payloads.
         - Utilisation : Choisissez l'option "Injecter une backdoor" et suivez les instructions.
+            Backdoor : 
+                - But : Avoir un reverse shell sur l'outil
+                - Utilisation : Choix du service (pour l'instant ftp ou ssh), entrée des crédentials,
+                entrée du port à mettre en écoute, choix du script de la backdoor à déposer dans la liste
+                - déroulement : Une fois le script déposé l'outil reste en écoute sur le port choisis. si la backdoor
+                s'activent le reverse shell apparaît. (Cette étape dépend du script que vous avez mis en place dans la biliothèque de backdoor,
+                celui disponible par défaut est facilement repérable par le pare-feu windows et ne se lance pas automatiquement)
 
     5. Gestion des rapports :
         - But : Accéder aux rapports générés précédemment.
