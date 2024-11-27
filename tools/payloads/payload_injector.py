@@ -2,7 +2,7 @@ from backdoor import reverse_shell
 
 def payload_injector(chemin_rapports):
     """Affiche le menu pour l'injection de payloads."""
-    print("""
+    print(r"""
   ___ _   _     _ _____ ____ _____ ___ ___  _   _       _        ____   _ __   ___     ___    _    ____  
  |_ _| \ | |   | | ____/ ___|_   _|_ _/ _ \| \ | |   __| | ___  |  _ \ / \\ \ / / |   / _ \  / \  |  _ \ 
   | ||  \| |_  | |  _|| |     | |  | | | | |  \| |  / _` |/ _ \ | |_) / _ \\ V /| |  | | | |/ _ \ | | | |
