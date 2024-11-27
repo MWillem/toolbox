@@ -58,7 +58,7 @@ def fusionner_rapports(chemin_vers_dossier_rapports, fichiers_rapports):
 
 def gestion_rapports(chemin_rapports):
     """Gère les rapports : affichage, suppression, fusion."""
-    print("""
+    print(r"""
   ______ _______  _____   _____   _____   ______ _______ _______
  |_____/ |_____| |_____] |_____] |     | |_____/    |    |______
  |    \_ |     | |       |       |_____| |    \_    |    ______|
