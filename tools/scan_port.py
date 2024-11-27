@@ -46,7 +46,7 @@ def sauvegarder_resultats(ip_address, nom_fichier, results, chemin_rapports):
 
 def main(chemin_rapports):
     """Fonction principale pour le scan de ports."""
-    print("""
+    print(r"""
  _______ _______ _______ __   _      ______  _______       _____   _____   ______ _______                                                           
  |______ |       |_____| | \  |      |     \ |______      |_____] |     | |_____/    |                                                              
  ______| |_____  |     | |  \_|      |_____/ |______      |       |_____| |    \_    |    
