@@ -2,7 +2,7 @@
 
 def afficher_manuel():
     """Affiche le manuel d'utilisation de chaque outil."""
-    print("""
+    print(r"""
  _______ _______ __   _ _     _ _______                         
  |  |  | |_____| | \  | |     | |______ |                       
  |  |  | |     | |  \_| |_____| |______ |_____
