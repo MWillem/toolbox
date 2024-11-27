@@ -40,7 +40,7 @@ def sauvegarder_rapport(ip_sous_reseau, hôtes_actifs, chemin_rapports, nom_fich
 
 def main(chemin_rapports):
     """Fonction principale pour le mappage réseau."""
-    print("""
+    print(r"""
  _______ _______  _____   _____  _____ __   _  ______       ______ _______ _______ _______ _______ _     _                                          
  |  |  | |_____| |_____] |_____]   |   | \  | |  ____      |_____/ |______ |______ |______ |_____| |     |                                          
  |  |  | |     | |       |       __|__ |  \_| |_____|      |    \_ |______ ______| |______ |     | |_____|
