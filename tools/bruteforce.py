@@ -59,7 +59,7 @@ def save_results(credentials, filename, ip_address, service, elapsed_time, chemi
 
 def main(chemin_rapports):
     """Fonction principale pour l'attaque de BruteForce."""
-    print("""
+    print(r"""
  ______   ______ _     _ _______ _______ _______  _____   ______ _______ _______                                                                    
  |_____] |_____/ |     |    |    |______ |______ |     | |_____/ |       |______                                                                    
  |_____] |    \_ |_____|    |    |______ |       |_____| |    \_ |_____  |______   
