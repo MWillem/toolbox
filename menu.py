@@ -1,5 +1,6 @@
 import os
 import sys
+import logging
 
 def configurer_chemins():
     """Configure les chemins des répertoires tools et payloads."""
@@ -34,14 +35,23 @@ def afficher_conditions_utilisation():
     choix = input().strip().lower()
     return choix == 'o'
 
+# Configure les chemins des modules
 configurer_chemins()
 
+# Importation des modules
 from scan_port import main as scan_ports_main
 from mapping_reseau import main as mapping_reseau_main
 from bruteforce import main as bruteforce_main
 from payload_injector import payload_injector
 from rapports import gestion_rapports
 from man import afficher_manuel 
+
+# Configuration des logs
+logging.basicConfig(
+    filename="toolbox.log",
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s"
+)
 
 def main():
     """Fonction principale pour afficher le menu et gérer les choix de l'utilisateur."""
@@ -50,12 +60,13 @@ def main():
         return
 
     chemin_rapports = os.path.join(os.path.dirname(__file__), 'rapports')
-    
+
+    # Création du dossier rapports s'il n'existe pas
     if not os.path.exists(chemin_rapports):
         os.makedirs(chemin_rapports)
 
     while True:
-        clear_screen()  # Utilise la fonction clear_screen pour effacer l'écran
+        clear_screen()  # Efface l'écran
         print("""                                        
   _____ ___   ___  _     ____   _____  __
  |_   _/ _ \ / _ \| |   | __ ) / _ \ \/ /
@@ -71,26 +82,32 @@ def main():
         print("5. Gestion des rapports")
         print("6. Manuel")
         print("7. Quitter")
-        choix = input("Entrez votre choix : ")
 
-        if choix == "1":
-            mapping_reseau_main(chemin_rapports)
-        elif choix == '2':
-            scan_ports_main(chemin_rapports)
-        elif choix == '3':
-            bruteforce_main(chemin_rapports)
-        elif choix == '4':
-            payload_injector(chemin_rapports)
-        elif choix == '5':
-            gestion_rapports(chemin_rapports)
-        elif choix == '6':
-            afficher_manuel()
-        elif choix == '7':
-            print("Merci d'utiliser la Toolbox de Pentest. À bientôt !")
-            break
-        else:
-            print("Choix invalide. Veuillez réessayer.")
-        
+        choix = input("Entrez votre choix : ").strip()
+        logging.info(f"Choix utilisateur : {choix}")
+
+        try:
+            if choix == "1":
+                mapping_reseau_main(chemin_rapports)
+            elif choix == '2':
+                scan_ports_main(chemin_rapports)
+            elif choix == '3':
+                bruteforce_main(chemin_rapports)
+            elif choix == '4':
+                payload_injector(chemin_rapports)
+            elif choix == '5':
+                gestion_rapports(chemin_rapports)
+            elif choix == '6':
+                afficher_manuel()
+            elif choix == '7':
+                print("Merci d'utiliser la Toolbox de Pentest. À bientôt !")
+                break
+            else:
+                print("Choix invalide. Veuillez réessayer.")
+        except Exception as e:
+            logging.error(f"Erreur lors du traitement du choix {choix}: {e}")
+            print(f"Une erreur est survenue : {e}")
+
         input("Appuyez sur Entrée pour continuer...")
 
 if __name__ == "__main__":
