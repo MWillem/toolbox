@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cyber-learning-toolbox"
+version = "2.6.0"
+description = "Toolbox guidée pour apprendre les bases d'un audit de cybersécurité."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Maréchaux Willem"}]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+]
+
+[project.scripts]
+cybertoolbox = "cybertoolbox.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["cybertoolbox*"]
