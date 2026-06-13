@@ -3,8 +3,11 @@ from __future__ import annotations
 import argparse
 from getpass import getpass
 import hashlib
+import os
 from pathlib import Path
+import shutil
 import sys
+import textwrap
 
 from . import __version__
 from .device_profile import DeviceProfile, build_device_profile
@@ -115,6 +118,58 @@ Les fiches décrivent des actifs techniques et ne doivent pas servir à profiler
 ou suivre une personne.
 **************************************************************************
 """
+
+
+COMPACT_BANNER = """
+╔══════════════════════════════╗
+║  CYBER LEARNING TOOLBOX 2.6  ║
+╚══════════════════════════════╝
+"""
+
+COMPACT_TERMS = """
+CONDITIONS D'UTILISATION
+
+Usage pédagogique et audits explicitement autorisés uniquement.
+Les scans restent limités aux réseaux privés. Les exercices de mots
+de passe et payloads restent locaux. Aucun profil personnel ni suivi.
+"""
+
+
+def terminal_width() -> int:
+    return max(20, shutil.get_terminal_size(fallback=(80, 24)).columns)
+
+
+def clear_screen() -> None:
+    if sys.stdout.isatty():
+        os.system("cls" if os.name == "nt" else "clear")
+
+
+def responsive_banner(banner: str, compact: str, minimum_width: int = 64) -> str:
+    return banner if terminal_width() >= minimum_width else compact
+
+
+def print_menu_item(key: str, label: str) -> None:
+    prefix = f"{key}. "
+    lines = textwrap.wrap(
+        label,
+        width=max(12, terminal_width() - len(prefix) - 1),
+        break_long_words=False,
+        break_on_hyphens=False,
+    ) or [label]
+    print(prefix + lines[0])
+    for line in lines[1:]:
+        print(" " * len(prefix) + line)
+
+
+def print_title(name: str) -> None:
+    if terminal_width() >= 64:
+        print(TITLES[name])
+    else:
+        print(f"\n=== {name.upper()} ===")
+
+
+def print_terms() -> None:
+    print(TERMS if terminal_width() >= 72 else COMPACT_TERMS)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -862,10 +917,11 @@ def run_public_asset_profile(hostname: str) -> None:
 
 
 def run_watchdog_menu() -> None:
-    print(WATCHDOG_BANNER)
-    print("1. Opération Signal Fantôme - scénario fictif local")
-    print("2. Profiler un appareil réel autorisé du réseau privé")
-    print("3. Profiler passivement un domaine public")
+    clear_screen()
+    print(responsive_banner(WATCHDOG_BANNER, "\n=== MODE WATCHDOG ===\n"))
+    print_menu_item("1", "Opération Signal Fantôme - scénario fictif local")
+    print_menu_item("2", "Profiler un appareil réel autorisé du réseau privé")
+    print_menu_item("3", "Profiler passivement un domaine public")
     choice = input("Choix : ").strip()
     if choice == "1":
         run_watchdog_mode()
@@ -881,7 +937,8 @@ def run_watchdog_menu() -> None:
 
 
 def run_watchdog_mode() -> None:
-    print(WATCHDOG_BANNER)
+    clear_screen()
+    print(responsive_banner(WATCHDOG_BANNER, "\n=== OPÉRATION SIGNAL FANTÔME ===\n"))
     print(
         "BRIEFING\n"
         "Une activité anormale a été signalée sur le réseau fictif CTOS-LAB.\n"
@@ -960,8 +1017,9 @@ def run_watchdog_mode() -> None:
 
 
 def interactive_menu() -> int:
-    print(BANNER)
-    print(TERMS)
+    clear_screen()
+    print(responsive_banner(BANNER, COMPACT_BANNER))
+    print_terms()
     if input("Acceptez-vous ces conditions ? [o/N] : ").strip().lower() != "o":
         print("Conditions refusées. Fermeture de la toolbox.")
         return 1
@@ -981,10 +1039,11 @@ def interactive_menu() -> int:
         "12": ("Interface graphique responsive", _interactive_gui),
     }
     while True:
-        print(BANNER)
+        clear_screen()
+        print(responsive_banner(BANNER, COMPACT_BANNER))
         for key, (label, _) in actions.items():
-            print(f"{key}. {label}")
-        print(f"0. {translate(SETTINGS.language, 'quit')}")
+            print_menu_item(key, label)
+        print_menu_item("0", translate(SETTINGS.language, "quit"))
         choice = input(f"\n{translate(SETTINGS.language, 'choice')} : ").strip()
         if choice == "0":
             print("Merci d'avoir utilisé la Cyber Learning Toolbox.")
@@ -992,7 +1051,9 @@ def interactive_menu() -> int:
         action = actions.get(choice)
         if not action:
             print(translate(SETTINGS.language, "invalid"))
+            input("\nAppuyez sur Entrée pour continuer...")
             continue
+        clear_screen()
         try:
             action[1]()
         except (ValueError, OSError) as exc:
@@ -1026,6 +1087,7 @@ def _interactive_scan() -> None:
 
 
 def _interactive_password_lab() -> None:
+    clear_screen()
     _lesson("password")
     print("1. Évaluer la robustesse d'un mot de passe")
     print("2. Démontrer une attaque par dictionnaire sur un hash créé ici")
@@ -1044,6 +1106,7 @@ def _interactive_password_lab() -> None:
 
 
 def _interactive_payload_lab() -> None:
+    clear_screen()
     _lesson("payload")
     print("1. Analyser statiquement un fichier")
     print("2. Simuler le dépôt d'un payload inoffensif")
@@ -1059,12 +1122,13 @@ def _interactive_payload_lab() -> None:
 
 
 def _interactive_local_lab() -> None:
+    clear_screen()
     print("\nLABORATOIRE LOCAL")
-    print("1. Préparer les journaux et payloads pédagogiques")
-    print("2. Analyser le journal préparé")
-    print("3. Analyser le payload à identifier")
-    print("4. Analyser le script volontairement risqué")
-    print("5. Lancer le serveur HTTP mal configuré")
+    print_menu_item("1", "Préparer les journaux et payloads pédagogiques")
+    print_menu_item("2", "Analyser le journal préparé")
+    print_menu_item("3", "Analyser le payload à identifier")
+    print_menu_item("4", "Analyser le script volontairement risqué")
+    print_menu_item("5", "Lancer le serveur HTTP mal configuré")
     choice = input("Choix : ").strip()
     root = Path("lab_workspace")
     if choice == "1":
@@ -1085,9 +1149,10 @@ def _interactive_local_lab() -> None:
 
 
 def manage_reports() -> None:
-    print(TITLES["reports"])
-    print(format_guide("reports"))
     while True:
+        clear_screen()
+        print_title("reports")
+        print(format_guide("reports"))
         reports = list_reports()
         if not reports:
             print("Aucun rapport disponible.")
@@ -1101,7 +1166,9 @@ def manage_reports() -> None:
         if action == "a":
             report = _choose_report(reports)
             if report:
+                clear_screen()
                 print("\n" + read_report(report))
+                input("\nAppuyez sur Entrée pour revenir aux rapports...")
         elif action == "s":
             report = _choose_report(reports)
             if report and input(f"Supprimer {report.name} ? [o/N] : ").lower() == "o":
@@ -1151,6 +1218,7 @@ def run_wireless_inventory(kind: str) -> None:
 
 
 def manage_settings() -> None:
+    clear_screen()
     print("\n=== PARAMÈTRES ===")
     for index, (name, value) in enumerate(settings_summary(SETTINGS), start=1):
         print(f"{index}. {name} : {value}")
@@ -1187,6 +1255,7 @@ def manage_settings() -> None:
 
 
 def show_overview() -> None:
+    clear_screen()
     print(
         """
 === VUE GLOBALE DE LA CYBER LEARNING TOOLBOX ===
@@ -1229,18 +1298,19 @@ LIMITES IMPORTANTES
 
 
 def _extra_tools() -> None:
-    print("1. Audit du système")
-    print("2. Empreinte SHA-256 d'un texte")
-    print("3. En-têtes HTTP")
-    print("4. Résolution DNS")
-    print("5. Certificat TLS")
-    print("6. Analyse d'un journal")
-    print("7. Permissions d'un fichier ou dossier")
-    print("8. Configuration locale")
-    print("9. Encodage et chiffrement pédagogique")
-    print("10. Analyse statique d'un script")
-    print("11. Informations Wi-Fi")
-    print("12. Appareils Bluetooth connus")
+    clear_screen()
+    print_menu_item("1", "Audit du système")
+    print_menu_item("2", "Empreinte SHA-256 d'un texte")
+    print_menu_item("3", "En-têtes HTTP")
+    print_menu_item("4", "Résolution DNS")
+    print_menu_item("5", "Certificat TLS")
+    print_menu_item("6", "Analyse d'un journal")
+    print_menu_item("7", "Permissions d'un fichier ou dossier")
+    print_menu_item("8", "Configuration locale")
+    print_menu_item("9", "Encodage et chiffrement pédagogique")
+    print_menu_item("10", "Analyse statique d'un script")
+    print_menu_item("11", "Informations Wi-Fi")
+    print_menu_item("12", "Appareils Bluetooth connus")
     choice = input("Choix : ").strip()
     if choice == "1":
         run_system()
@@ -1288,7 +1358,7 @@ def _interactive_encoding() -> None:
 
 
 def _lesson(name: str) -> None:
-    print(TITLES[name])
+    print_title(name)
     print(format_guide(name))
 
 

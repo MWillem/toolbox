@@ -15,6 +15,10 @@ L'objectif n'est pas seulement d'exécuter une commande. Chaque atelier précise
 **pourquoi** il existe, **quand** l'utiliser, **comment** il fonctionne et
 **ce que son résultat apporte**.
 
+Le menu terminal nettoie l'écran entre les modules. Il détecte aussi la largeur
+disponible : les grandes bannières ASCII sont conservées sur un écran large et
+remplacées par des titres compacts sur téléphone ou dans une fenêtre étroite.
+
 ## Menu principal
 
 ```text

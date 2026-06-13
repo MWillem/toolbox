@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from unittest.mock import patch
 from pathlib import Path
 
 from cybertoolbox.labs.hashing import hash_file, hash_text
@@ -28,6 +29,7 @@ from cybertoolbox.watchdog import (
     contains_expected_indicators,
 )
 from cybertoolbox.webapp import render_layout
+from cybertoolbox.cli import responsive_banner
 
 
 class SafetyTests(unittest.TestCase):
@@ -51,6 +53,12 @@ class SafetyTests(unittest.TestCase):
         self.assertNotIn("<script>alert(1)</script>", page)
         self.assertIn("&lt;script&gt;", page)
         self.assertIn('name="viewport"', page)
+
+    def test_terminal_banner_becomes_compact_on_small_screens(self):
+        with patch("cybertoolbox.cli.terminal_width", return_value=40):
+            self.assertEqual(responsive_banner("large", "compact"), "compact")
+        with patch("cybertoolbox.cli.terminal_width", return_value=100):
+            self.assertEqual(responsive_banner("large", "compact"), "large")
 
 
 class LabTests(unittest.TestCase):
