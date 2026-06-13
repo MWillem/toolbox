@@ -8,5 +8,6 @@ rapports/
 lab_payload/
 lab_workspace/
 missions/
+historique/
 .cybertoolbox.json
 .coverage

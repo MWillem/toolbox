@@ -40,6 +40,7 @@ remplacées par des titres compacts sur téléphone ou dans une fenêtre étroit
 10. Paramètres
 11. Vue globale des capacités
 12. Interface graphique responsive
+13. Données enregistrées
 ```
 
 ## Interface graphique
@@ -161,11 +162,41 @@ La toolbox utilise `nmap -sn` pour rechercher les hôtes actifs sur un réseau
 privé limité à 256 adresses. Si Nmap n'est pas installé, elle utilise le
 programme `ping` comme mode de secours.
 
+Depuis le menu, une découverte peut être conservée dans l'historique local.
+Lors d'un scan de ports ultérieur, il est alors possible de sélectionner
+directement un des hôtes déjà découverts au lieu de ressaisir son adresse.
+
 ### Scan de ports
 
 Lorsque Nmap est disponible, `nmap -sV` identifie les ports ouverts, les
 services, produits et versions. Le repli portable utilise des connexions TCP
 Python, avec moins d'informations.
+
+Le sous-menu propose aussi :
+
+- une fiche d'aide sur les ports courants et les services généralement associés ;
+- la reprise d'un ancien scan avec la même cible et la même sélection de ports ;
+- la comparaison avec le dernier scan conservé de la cible ;
+- l'affichage des ports nouvellement ouverts, fermés ou dont le service a changé.
+
+Chaque résultat peut être conservé comme une nouvelle fiche, renommé ou ignoré.
+Une nouvelle fiche ne remplace jamais automatiquement l'ancienne.
+
+### Historique local
+
+Les découvertes et scans conservés sont enregistrés dans `historique/`, au
+format JSON. Ce dossier reste local et est ignoré par Git. Le menu
+**Données enregistrées** permet de :
+
+- consulter une fiche et ses résultats ;
+- renommer son libellé ;
+- supprimer une fiche ;
+- supprimer toute une catégorie ;
+- consulter, renommer ou supprimer les missions guidées sauvegardées ;
+- supprimer en une seule fois les historiques, rapports et missions.
+
+La gestion des rapports permet également de renommer un fichier ou de supprimer
+tous les rapports et leurs exports HTML/JSON après confirmation explicite.
 
 ### Lab mots de passe
 

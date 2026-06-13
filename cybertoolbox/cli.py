@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from getpass import getpass
 import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -12,8 +13,26 @@ import textwrap
 from . import __version__
 from .device_profile import DeviceProfile, build_device_profile
 from .guide import format_guide, full_manual
+from .history import (
+    compare_port_scans,
+    delete_all_history,
+    delete_history,
+    history_display_name,
+    latest_history,
+    list_history,
+    load_history,
+    rename_history,
+    save_history,
+)
 from .i18n import translate
-from .mission import Mission, service_recommendations
+from .mission import (
+    Mission,
+    delete_all_missions,
+    delete_mission,
+    list_missions,
+    rename_mission,
+    service_recommendations,
+)
 from .labs.cracking import crack_demo_hash
 from .labs.crypto_basics import (
     base64_decode,
@@ -27,7 +46,7 @@ from .labs.hashing import ALGORITHMS, hash_file, hash_text
 from .labs.http_headers import analyze_headers, fetch_headers
 from .labs.local_lab import prepare_lab, serve_lab
 from .labs.log_analysis import analyze_log
-from .labs.network import discover_hosts, scan_ports
+from .labs.network import common_port_guide, discover_hosts, scan_ports
 from .labs.network_info import dns_lookup, inspect_tls
 from .labs.passwords import analyze_password
 from .labs.payloads import analyze_payload_file, create_harmless_payload
@@ -35,11 +54,13 @@ from .labs.script_analysis import analyze_script
 from .labs.system_audit import audit_system
 from .labs.wireless import bluetooth_inventory, wifi_inventory
 from .reports import (
+    delete_all_reports,
     delete_report,
     export_report,
     list_reports,
     merge_reports,
     read_report,
+    rename_report,
     save_professional_report as write_professional_report,
     save_report as write_report,
 )
@@ -63,7 +84,7 @@ BANNER = r"""
    | || |_| | |_| | |___| |_) | |_| /  \
    |_| \___/ \___/|_____|____/ \___/_/\_\
 
-       CYBER LEARNING TOOLBOX 2.6
+       CYBER LEARNING TOOLBOX 2.7
 """
 
 TITLES = {
@@ -122,7 +143,7 @@ ou suivre une personne.
 
 COMPACT_BANNER = """
 ╔══════════════════════════════╗
-║  CYBER LEARNING TOOLBOX 2.6  ║
+║  CYBER LEARNING TOOLBOX 2.7  ║
 ╚══════════════════════════════╝
 """
 
@@ -149,7 +170,7 @@ def responsive_banner(banner: str, compact: str, minimum_width: int = 64) -> str
 
 
 def print_menu_item(key: str, label: str) -> None:
-    prefix = f"{key}. "
+    prefix = f"{key:>2}. "
     lines = textwrap.wrap(
         label,
         width=max(12, terminal_width() - len(prefix) - 1),
@@ -341,7 +362,12 @@ def run_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_mapping(network: str, show_lesson: bool = True) -> None:
+def run_mapping(
+    network: str,
+    show_lesson: bool = True,
+    keep_history: bool = False,
+    history_label: str = "",
+) -> tuple[list[dict[str, str]], str]:
     if show_lesson and SETTINGS.show_lessons:
         _lesson("mapping")
     hosts, engine = discover_hosts(network, prefer_nmap=SETTINGS.prefer_nmap)
@@ -351,6 +377,15 @@ def run_mapping(network: str, show_lesson: bool = True) -> None:
     content = "\n".join(lines)
     print(f"Moteur : {engine}")
     print(content)
+    if keep_history:
+        path = save_history(
+            "discovery",
+            network,
+            engine,
+            hosts,
+            label=history_label,
+        )
+        print(f"Découverte conservée : {path.name}")
     _report(
         "Mappage réseau",
         [
@@ -360,9 +395,16 @@ def run_mapping(network: str, show_lesson: bool = True) -> None:
             ("Interprétation", "Un hôte actif doit encore être analysé avant toute conclusion."),
         ],
     )
+    return hosts, engine
 
 
-def run_scan(target: str, ports_value: str, show_lesson: bool = True) -> None:
+def run_scan(
+    target: str,
+    ports_value: str,
+    show_lesson: bool = True,
+    keep_history: bool = False,
+    history_label: str = "",
+) -> tuple[list[dict[str, object]], str]:
     if show_lesson and SETTINGS.show_lessons:
         _lesson("ports")
     ports = parse_ports(ports_value)
@@ -382,6 +424,29 @@ def run_scan(target: str, ports_value: str, show_lesson: bool = True) -> None:
     content = "\n".join(lines)
     print(f"Moteur : {engine}")
     print(content)
+    previous = latest_history("port_scan", target)
+    if previous:
+        changes = compare_port_scans(previous[1], results)
+        if any(changes.values()):
+            print("\nChangements depuis le dernier scan conservé :")
+            for item in changes["opened"]:
+                print(f"+ Ouvert : {item}")
+            for item in changes["closed"]:
+                print(f"- Fermé : {item}")
+            for item in changes["changed"]:
+                print(f"~ Modifié : {item}")
+        else:
+            print("\nAucun changement par rapport au dernier scan conservé de cette cible.")
+    if keep_history:
+        path = save_history(
+            "port_scan",
+            target,
+            engine,
+            results,
+            ports=ports_value,
+            label=history_label,
+        )
+        print(f"Scan conservé : {path.name}")
     _report(
         "Scan de ports",
         [
@@ -391,6 +456,7 @@ def run_scan(target: str, ports_value: str, show_lesson: bool = True) -> None:
             ("À vérifier", "Chaque service est-il nécessaire, à jour, filtré et correctement authentifié ?"),
         ],
     )
+    return results, engine
 
 
 def run_crack_hash(
@@ -711,7 +777,7 @@ def run_mission() -> None:
 
     print(f"\nHôtes détectés avec {discovery_engine} :")
     for index, host in enumerate(mission.hosts, start=1):
-        print(f"{index}. {host['address']} - {host['hostname']}")
+        print_menu_item(str(index), f"{host['address']} - {host['hostname']}")
     try:
         selected = int(input("Hôte à analyser : ")) - 1
         if selected < 0 or selected >= len(mission.hosts):
@@ -1037,6 +1103,7 @@ def interactive_menu() -> int:
         "10": (translate(SETTINGS.language, "menu_settings"), manage_settings),
         "11": (translate(SETTINGS.language, "menu_overview"), show_overview),
         "12": ("Interface graphique responsive", _interactive_gui),
+        "13": ("Données enregistrées", manage_stored_data),
     }
     while True:
         clear_screen()
@@ -1072,25 +1139,82 @@ def _interactive_gui() -> None:
 
 
 def _interactive_mapping() -> None:
+    clear_screen()
     _lesson("mapping")
-    network = input("Réseau privé (ex. 192.168.1.0/24) : ").strip()
+    print_menu_item("1", "Nouvelle découverte réseau")
+    print_menu_item("2", "Relancer une découverte précédente")
+    print_menu_item("3", "Consulter ou gérer l'historique")
+    choice = input("Choix : ").strip()
+    if choice == "3":
+        manage_history("discovery")
+        return
+    if choice == "2":
+        selected = _choose_history("discovery")
+        if not selected:
+            return
+        network = str(selected[1]["subject"])
+        print(f"Réseau sélectionné : {network}")
+    elif choice == "1":
+        network = input("Réseau privé (ex. 192.168.1.0/24) : ").strip()
+    else:
+        print("Choix invalide.")
+        return
     if _authorized():
-        run_mapping(network, show_lesson=False)
+        keep = _ask_keep_history()
+        label = input("Nom de la fiche [réseau/date] : ").strip() if keep else ""
+        run_mapping(network, show_lesson=False, keep_history=keep, history_label=label)
 
 
 def _interactive_scan() -> None:
+    clear_screen()
     _lesson("ports")
-    target = input("Cible locale/privée : ").strip()
-    ports = input(f"Ports [{SETTINGS.default_ports}] : ").strip() or SETTINGS.default_ports
+    print_menu_item("1", "Saisir une cible manuellement")
+    print_menu_item("2", "Choisir un hôte découvert précédemment")
+    print_menu_item("3", "Relancer un scan de ports précédent")
+    print_menu_item("4", "Afficher la fiche d'aide des ports connus")
+    print_menu_item("5", "Consulter ou gérer l'historique")
+    choice = input("Choix : ").strip()
+    if choice == "4":
+        show_port_guide()
+        return
+    if choice == "5":
+        manage_history("port_scan")
+        return
+    if choice == "2":
+        target = _choose_discovered_host()
+        if not target:
+            return
+        ports = input(f"Ports [{SETTINGS.default_ports}] : ").strip() or SETTINGS.default_ports
+    elif choice == "3":
+        selected = _choose_history("port_scan")
+        if not selected:
+            return
+        target = str(selected[1]["subject"])
+        ports = str(selected[1].get("ports") or SETTINGS.default_ports)
+        print(f"Scan sélectionné : {target}, ports {ports}")
+    elif choice == "1":
+        target = input("Cible locale/privée : ").strip()
+        ports = input(f"Ports [{SETTINGS.default_ports}] : ").strip() or SETTINGS.default_ports
+    else:
+        print("Choix invalide.")
+        return
     if _authorized():
-        run_scan(target, ports, show_lesson=False)
+        keep = _ask_keep_history()
+        label = input("Nom de la fiche [cible/date] : ").strip() if keep else ""
+        run_scan(
+            target,
+            ports,
+            show_lesson=False,
+            keep_history=keep,
+            history_label=label,
+        )
 
 
 def _interactive_password_lab() -> None:
     clear_screen()
     _lesson("password")
-    print("1. Évaluer la robustesse d'un mot de passe")
-    print("2. Démontrer une attaque par dictionnaire sur un hash créé ici")
+    print_menu_item("1", "Évaluer la robustesse d'un mot de passe")
+    print_menu_item("2", "Démontrer une attaque par dictionnaire sur un hash créé ici")
     choice = input("Choix : ").strip()
     if choice == "1":
         run_password()
@@ -1108,8 +1232,8 @@ def _interactive_password_lab() -> None:
 def _interactive_payload_lab() -> None:
     clear_screen()
     _lesson("payload")
-    print("1. Analyser statiquement un fichier")
-    print("2. Simuler le dépôt d'un payload inoffensif")
+    print_menu_item("1", "Analyser statiquement un fichier")
+    print_menu_item("2", "Simuler le dépôt d'un payload inoffensif")
     choice = input("Choix : ").strip()
     if choice == "1":
         run_payload_analysis(Path(input("Chemin du fichier : ").strip()), show_lesson=False)
@@ -1158,8 +1282,14 @@ def manage_reports() -> None:
             print("Aucun rapport disponible.")
             return
         for index, report in enumerate(reports, start=1):
-            print(f"{index}. {report.name}")
-        print("a. Afficher | f. Fusionner | e. Exporter | s. Supprimer | q. Retour")
+            print_menu_item(str(index), report.name)
+        print_menu_item("a", "Afficher")
+        print_menu_item("f", "Fusionner")
+        print_menu_item("e", "Exporter")
+        print_menu_item("r", "Renommer")
+        print_menu_item("s", "Supprimer")
+        print_menu_item("x", "Tout supprimer")
+        print_menu_item("q", "Retour")
         action = input("Action : ").strip().lower()
         if action == "q":
             return
@@ -1174,6 +1304,17 @@ def manage_reports() -> None:
             if report and input(f"Supprimer {report.name} ? [o/N] : ").lower() == "o":
                 delete_report(report)
                 print("Rapport supprimé.")
+        elif action == "r":
+            report = _choose_report(reports)
+            if report:
+                name = input("Nouveau nom, sans extension : ").strip()
+                print(f"Rapport renommé : {rename_report(report, name).name}")
+        elif action == "x":
+            confirmation = input("Supprimer TOUS les rapports ? Tapez SUPPRIMER : ").strip()
+            if confirmation == "SUPPRIMER":
+                print(f"{delete_all_reports()} fichier(s) de rapport supprimé(s).")
+            else:
+                print("Suppression annulée.")
         elif action == "f":
             raw = input("Numéros à fusionner, séparés par des virgules : ")
             selected = _select_reports(reports, raw)
@@ -1186,6 +1327,195 @@ def manage_reports() -> None:
                 print(f"Export créé : {export_report(report, output_format)}")
         else:
             print("Action invalide.")
+
+
+def show_port_guide() -> None:
+    clear_screen()
+    print("\n=== AIDE DES PORTS CONNUS ===\n")
+    for port, name, description in common_port_guide():
+        prefix = f"{port:>5}/tcp  {name:<20}"
+        wrapped = textwrap.wrap(
+            description,
+            width=max(20, terminal_width() - len(prefix) - 1),
+            break_long_words=False,
+        ) or [description]
+        print(prefix + " " + wrapped[0])
+        for line in wrapped[1:]:
+            print(" " * (len(prefix) + 1) + line)
+    print(
+        "\nUn port indique un service possible, pas une preuve suffisante. "
+        "Nmap et la validation de configuration restent nécessaires."
+    )
+
+
+def manage_history(kind: str | None = None) -> None:
+    while True:
+        clear_screen()
+        title = "DÉCOUVERTES" if kind == "discovery" else "SCANS DE PORTS" if kind else "TOUT"
+        print(f"\n=== HISTORIQUE : {title} ===")
+        paths = list_history(kind)
+        if not paths:
+            print("Aucune fiche enregistrée.")
+            return
+        payloads = [load_history(path) for path in paths]
+        for index, payload in enumerate(payloads, start=1):
+            print_menu_item(str(index), history_display_name(payload))
+        print_menu_item("a", "Afficher une fiche")
+        print_menu_item("r", "Renommer une fiche")
+        print_menu_item("s", "Supprimer une fiche")
+        print_menu_item("x", "Tout supprimer dans cette catégorie")
+        print_menu_item("q", "Retour")
+        action = input("Action : ").strip().lower()
+        if action == "q":
+            return
+        selected = None
+        if action in {"a", "r", "s"}:
+            selected = _choose_history(kind)
+            if not selected:
+                continue
+        if action == "a" and selected:
+            clear_screen()
+            print(json.dumps(selected[1], ensure_ascii=False, indent=2))
+            input("\nAppuyez sur Entrée pour revenir...")
+        elif action == "r" and selected:
+            rename_history(selected[0], input("Nouveau nom de fiche : "))
+        elif action == "s" and selected:
+            if input("Supprimer cette fiche ? [o/N] : ").strip().lower() == "o":
+                delete_history(selected[0])
+        elif action == "x":
+            if input("Tapez SUPPRIMER pour confirmer : ").strip() == "SUPPRIMER":
+                print(f"{delete_all_history(kind)} fiche(s) supprimée(s).")
+                return
+        else:
+            print("Action invalide.")
+
+
+def manage_stored_data() -> None:
+    clear_screen()
+    print("\n=== DONNÉES ENREGISTRÉES ===")
+    print_menu_item("1", "Historique des découvertes")
+    print_menu_item("2", "Historique des scans de ports")
+    print_menu_item("3", "Rapports")
+    print_menu_item("4", "Missions sauvegardées")
+    print_menu_item("5", "Supprimer toutes les données enregistrées")
+    print_menu_item("0", "Retour")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        manage_history("discovery")
+    elif choice == "2":
+        manage_history("port_scan")
+    elif choice == "3":
+        manage_reports()
+    elif choice == "4":
+        manage_missions()
+    elif choice == "5":
+        confirmation = input("Tapez TOUT SUPPRIMER pour confirmer : ").strip()
+        if confirmation == "TOUT SUPPRIMER":
+            histories = delete_all_history()
+            reports = delete_all_reports()
+            missions = delete_all_missions()
+            print(
+                f"{histories} historique(s), {reports} rapport(s) et "
+                f"{missions} mission(s) supprimé(s)."
+            )
+        else:
+            print("Suppression annulée.")
+
+
+def manage_missions() -> None:
+    while True:
+        clear_screen()
+        print("\n=== MISSIONS SAUVEGARDÉES ===")
+        missions = list_missions()
+        if not missions:
+            print("Aucune mission sauvegardée.")
+            return
+        for index, path in enumerate(missions, start=1):
+            mission = Mission.load(path)
+            print_menu_item(str(index), f"{mission.name} | {mission.started_at}")
+        print_menu_item("a", "Afficher")
+        print_menu_item("r", "Renommer")
+        print_menu_item("s", "Supprimer")
+        print_menu_item("x", "Tout supprimer")
+        print_menu_item("q", "Retour")
+        action = input("Action : ").strip().lower()
+        if action == "q":
+            return
+        mission_path = _choose_path(missions, "mission") if action in {"a", "r", "s"} else None
+        if action == "a" and mission_path:
+            clear_screen()
+            print(json.dumps(Mission.load(mission_path).__dict__, ensure_ascii=False, indent=2))
+            input("\nAppuyez sur Entrée pour revenir...")
+        elif action == "r" and mission_path:
+            print(f"Mission renommée : {rename_mission(mission_path, input('Nouveau nom : ')).name}")
+        elif action == "s" and mission_path:
+            if input("Supprimer cette mission ? [o/N] : ").strip().lower() == "o":
+                delete_mission(mission_path)
+        elif action == "x":
+            if input("Tapez SUPPRIMER pour confirmer : ").strip() == "SUPPRIMER":
+                print(f"{delete_all_missions()} mission(s) supprimée(s).")
+                return
+        else:
+            print("Action invalide.")
+
+
+def _choose_path(paths: list[Path], label: str) -> Path | None:
+    try:
+        index = int(input(f"Numéro de la {label} : ").strip()) - 1
+    except ValueError:
+        print("Numéro invalide.")
+        return None
+    if not 0 <= index < len(paths):
+        print("Numéro invalide.")
+        return None
+    return paths[index]
+
+
+def _choose_history(kind: str | None) -> tuple[Path, dict[str, object]] | None:
+    paths = list_history(kind)
+    if not paths:
+        print("Aucune fiche disponible.")
+        return None
+    for index, path in enumerate(paths, start=1):
+        print_menu_item(str(index), history_display_name(load_history(path)))
+    try:
+        index = int(input("Numéro de la fiche : ").strip()) - 1
+    except ValueError:
+        print("Numéro invalide.")
+        return None
+    if not 0 <= index < len(paths):
+        print("Numéro invalide.")
+        return None
+    return paths[index], load_history(paths[index])
+
+
+def _choose_discovered_host() -> str | None:
+    selected = _choose_history("discovery")
+    if not selected:
+        return None
+    hosts = selected[1].get("results", [])
+    if not hosts:
+        print("Cette découverte ne contient aucun hôte.")
+        return None
+    for index, host in enumerate(hosts, start=1):
+        print_menu_item(str(index), f"{host['address']} - {host.get('hostname', '-')}")
+    try:
+        index = int(input("Numéro de l'hôte : ").strip()) - 1
+    except ValueError:
+        print("Numéro invalide.")
+        return None
+    if not 0 <= index < len(hosts):
+        print("Numéro invalide.")
+        return None
+    return str(hosts[index]["address"])
+
+
+def _ask_keep_history() -> bool:
+    return input("Conserver cette nouvelle fiche dans l'historique ? [O/n] : ").strip().lower() not in {
+        "n",
+        "non",
+        "no",
+    }
 
 
 def show_reports() -> None:
@@ -1221,8 +1551,8 @@ def manage_settings() -> None:
     clear_screen()
     print("\n=== PARAMÈTRES ===")
     for index, (name, value) in enumerate(settings_summary(SETTINGS), start=1):
-        print(f"{index}. {name} : {value}")
-    print("0. Retour sans modification")
+        print_menu_item(str(index), f"{name} : {value}")
+    print_menu_item("0", "Retour sans modification")
     choice = input("Paramètre à modifier : ").strip()
     if choice == "0":
         return
@@ -1342,10 +1672,10 @@ def _extra_tools() -> None:
 
 def _interactive_encoding() -> None:
     print(concepts_summary())
-    print("1. Encoder en Base64")
-    print("2. Décoder du Base64")
-    print("3. Chiffrer avec le XOR pédagogique")
-    print("4. Déchiffrer avec le XOR pédagogique")
+    print_menu_item("1", "Encoder en Base64")
+    print_menu_item("2", "Décoder du Base64")
+    print_menu_item("3", "Chiffrer avec le XOR pédagogique")
+    print_menu_item("4", "Déchiffrer avec le XOR pédagogique")
     choice = input("Choix : ").strip()
     actions = {"1": "encode", "2": "decode", "3": "encrypt", "4": "decrypt"}
     action = actions.get(choice)

@@ -76,6 +76,31 @@ def delete_report(path: Path) -> None:
     path.unlink()
 
 
+def rename_report(path: Path, name: str) -> Path:
+    _ensure_report_path(path)
+    clean = re.sub(r"[^a-zA-Z0-9._-]+", "-", name.strip()).strip("-")
+    if not clean:
+        raise ValueError("Le nouveau nom ne peut pas être vide.")
+    destination = path.with_name(f"{clean}.md")
+    _ensure_report_path(destination)
+    if destination.exists():
+        raise ValueError("Un rapport porte déjà ce nom.")
+    return path.rename(destination)
+
+
+def delete_all_reports() -> int:
+    if not REPORTS_DIR.exists():
+        return 0
+    reports = [
+        path
+        for path in REPORTS_DIR.iterdir()
+        if path.is_file() and path.suffix.lower() in {".md", ".html", ".json"}
+    ]
+    for path in reports:
+        path.unlink()
+    return len(reports)
+
+
 def merge_reports(paths: list[Path], name: str) -> Path:
     if not paths:
         raise ValueError("Sélectionnez au moins un rapport.")

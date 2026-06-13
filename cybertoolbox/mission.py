@@ -51,3 +51,47 @@ def service_recommendations(services: list[dict[str, object]]) -> list[str]:
         else:
             recommendations.append(f"Confirmer le besoin métier et les mises à jour du service {name} sur {port}.")
     return list(dict.fromkeys(recommendations))
+
+
+def list_missions() -> list[Path]:
+    if not MISSIONS_DIR.exists():
+        return []
+    return sorted(MISSIONS_DIR.glob("*.json"), reverse=True)
+
+
+def rename_mission(path: Path, name: str) -> Path:
+    _ensure_mission_path(path)
+    clean = re.sub(r"[^a-zA-Z0-9._-]+", "-", name.strip()).strip("-")
+    if not clean:
+        raise ValueError("Le nouveau nom ne peut pas être vide.")
+    destination = path.with_name(f"{clean}.json")
+    _ensure_mission_path(destination)
+    if destination.exists():
+        raise ValueError("Une mission porte déjà ce nom.")
+    mission = Mission.load(path)
+    mission.name = name.strip()
+    destination.write_text(
+        json.dumps(asdict(mission), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    path.unlink()
+    return destination
+
+
+def delete_mission(path: Path) -> None:
+    _ensure_mission_path(path)
+    path.unlink()
+
+
+def delete_all_missions() -> int:
+    missions = list_missions()
+    for path in missions:
+        path.unlink()
+    return len(missions)
+
+
+def _ensure_mission_path(path: Path) -> None:
+    root = MISSIONS_DIR.resolve()
+    resolved = path.resolve()
+    if resolved.parent != root or resolved.suffix.lower() != ".json":
+        raise ValueError("Mission invalide.")

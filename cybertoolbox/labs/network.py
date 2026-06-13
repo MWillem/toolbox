@@ -27,6 +27,46 @@ SERVICES = {
     8080: "HTTP alternatif",
 }
 
+PORT_GUIDE = {
+    20: ("FTP-data", "Transfert de données FTP, ancien protocole souvent non chiffré."),
+    21: ("FTP", "Transfert de fichiers. Préférer SFTP ou FTPS pour les données sensibles."),
+    22: ("SSH/SFTP", "Administration distante et transfert sécurisé."),
+    23: ("Telnet", "Administration distante non chiffrée, généralement à désactiver."),
+    25: ("SMTP", "Transport des courriels entre serveurs."),
+    53: ("DNS", "Résolution des noms de domaine."),
+    67: ("DHCP serveur", "Attribution automatique de la configuration réseau."),
+    68: ("DHCP client", "Réception de la configuration réseau."),
+    80: ("HTTP", "Serveur web non chiffré ou redirection vers HTTPS."),
+    110: ("POP3", "Réception de courriels, souvent remplacée par POP3S."),
+    123: ("NTP", "Synchronisation de l'heure."),
+    135: ("RPC Windows", "Services RPC Microsoft, à limiter aux réseaux nécessaires."),
+    139: ("NetBIOS", "Partage Windows historique."),
+    143: ("IMAP", "Consultation de courriels, souvent remplacée par IMAPS."),
+    161: ("SNMP", "Supervision d'équipements réseau."),
+    389: ("LDAP", "Annuaire. LDAP simple peut être non chiffré."),
+    443: ("HTTPS", "Serveur web protégé par TLS."),
+    445: ("SMB", "Partages de fichiers et services Windows."),
+    465: ("SMTPS", "Envoi de courriels avec TLS implicite."),
+    587: ("SMTP submission", "Soumission authentifiée de courriels."),
+    631: ("IPP/CUPS", "Impression réseau."),
+    993: ("IMAPS", "Consultation IMAP chiffrée."),
+    995: ("POP3S", "Réception POP3 chiffrée."),
+    1433: ("Microsoft SQL Server", "Base de données Microsoft SQL Server."),
+    1521: ("Oracle", "Base de données Oracle."),
+    3306: ("MySQL/MariaDB", "Base de données MySQL ou MariaDB."),
+    3389: ("RDP", "Bureau à distance Windows."),
+    5432: ("PostgreSQL", "Base de données PostgreSQL."),
+    5900: ("VNC", "Contrôle graphique à distance."),
+    6379: ("Redis", "Base clé-valeur, rarement destinée à être exposée."),
+    8080: ("HTTP alternatif", "Interface web, proxy ou application de développement."),
+    8443: ("HTTPS alternatif", "Interface web TLS sur un port alternatif."),
+    9100: ("JetDirect", "Impression réseau directe."),
+}
+
+
+def common_port_guide() -> list[tuple[int, str, str]]:
+    return [(port, name, description) for port, (name, description) in PORT_GUIDE.items()]
+
 
 def nmap_available() -> bool:
     return shutil.which("nmap") is not None

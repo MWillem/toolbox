@@ -1,5 +1,7 @@
+import io
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 from pathlib import Path
 
@@ -19,8 +21,21 @@ from cybertoolbox.labs.cracking import crack_demo_hash
 from cybertoolbox.labs.payloads import analyze_payload_file, create_harmless_payload
 from cybertoolbox.labs.script_analysis import analyze_script
 from cybertoolbox.device_profile import infer_device_type
+from cybertoolbox.history import (
+    compare_port_scans,
+    delete_all_history,
+    list_history,
+    load_history,
+    rename_history,
+    save_history,
+)
 from cybertoolbox.mission import service_recommendations
-from cybertoolbox.reports import export_report, save_professional_report
+from cybertoolbox.reports import (
+    delete_all_reports,
+    export_report,
+    rename_report,
+    save_professional_report,
+)
 from cybertoolbox.safety import parse_ports, parse_private_network, resolve_authorized_target
 from cybertoolbox.settings import Settings, load_settings, save_settings
 from cybertoolbox.watchdog import (
@@ -29,7 +44,7 @@ from cybertoolbox.watchdog import (
     contains_expected_indicators,
 )
 from cybertoolbox.webapp import render_layout
-from cybertoolbox.cli import responsive_banner
+from cybertoolbox.cli import print_menu_item, responsive_banner
 
 
 class SafetyTests(unittest.TestCase):
@@ -59,6 +74,14 @@ class SafetyTests(unittest.TestCase):
             self.assertEqual(responsive_banner("large", "compact"), "compact")
         with patch("cybertoolbox.cli.terminal_width", return_value=100):
             self.assertEqual(responsive_banner("large", "compact"), "large")
+
+    def test_menu_numbers_are_aligned(self):
+        output = io.StringIO()
+        with patch("cybertoolbox.cli.terminal_width", return_value=80):
+            with redirect_stdout(output):
+                print_menu_item("1", "Premier")
+                print_menu_item("10", "Dixième")
+        self.assertEqual(output.getvalue().splitlines(), [" 1. Premier", "10. Dixième"])
 
 
 class LabTests(unittest.TestCase):
@@ -190,6 +213,66 @@ class LabTests(unittest.TestCase):
             self.assertEqual(loaded.language, "en")
             self.assertEqual(loaded.report_mode, "off")
             self.assertEqual(loaded.default_ports, "22,80")
+
+    def test_scan_history_is_versioned_renamed_and_deleted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = save_history(
+                "port_scan",
+                "192.168.1.10",
+                "test",
+                [{"port": 22, "service": "ssh"}],
+                ports="22,80",
+                root=root,
+            )
+            second = save_history(
+                "port_scan",
+                "192.168.1.10",
+                "test",
+                [{"port": 80, "service": "http"}],
+                ports="22,80",
+                root=root,
+            )
+            self.assertNotEqual(first, second)
+            rename_history(first, "Serveur de test", root)
+            self.assertEqual(load_history(first, root)["label"], "Serveur de test")
+            self.assertEqual(len(list_history("port_scan", root)), 2)
+            self.assertEqual(delete_all_history("port_scan", root), 2)
+            self.assertEqual(list_history(root=root), [])
+
+    def test_port_scan_comparison_reports_changes(self):
+        previous = {
+            "results": [
+                {"port": 22, "service": "ssh"},
+                {"port": 80, "service": "http"},
+            ]
+        }
+        changes = compare_port_scans(
+            previous,
+            [
+                {"port": 22, "service": "openssh"},
+                {"port": 443, "service": "https"},
+            ],
+        )
+        self.assertTrue(any("443/tcp" in item for item in changes["opened"]))
+        self.assertTrue(any("80/tcp" in item for item in changes["closed"]))
+        self.assertTrue(any("22/tcp" in item for item in changes["changed"]))
+
+    def test_reports_can_be_renamed_and_deleted_together(self):
+        with tempfile.TemporaryDirectory() as directory:
+            from cybertoolbox import reports
+
+            previous = reports.REPORTS_DIR
+            reports.REPORTS_DIR = Path(directory)
+            try:
+                report = reports.save_report("Original", [("Test", "Contenu")])
+                renamed = rename_report(report, "nouveau-nom")
+                renamed.with_suffix(".html").write_text("export", encoding="utf-8")
+                self.assertEqual(renamed.name, "nouveau-nom.md")
+                self.assertEqual(delete_all_reports(), 2)
+                self.assertEqual(list(Path(directory).iterdir()), [])
+            finally:
+                reports.REPORTS_DIR = previous
 
 
 if __name__ == "__main__":
