@@ -83,6 +83,11 @@ scripts, payloads factices, mots de passe et Base64 sont utilisables dans la
 GUI. Pour protéger la machine qui héberge l'interface, les analyses de fichiers
 du GUI sont limitées au dossier de la toolbox.
 
+Pendant une reconnaissance ou une autre opération longue, un panneau affiche
+le temps écoulé et les étapes de traitement en cours. Les listes structurées,
+comme les hôtes, ports ou services, utilisent des tableaux aux colonnes alignées
+sur PC comme sur téléphone.
+
 Sur Termux, si le navigateur ne s'ouvre pas automatiquement :
 
 ```bash

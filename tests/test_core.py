@@ -53,7 +53,7 @@ from cybertoolbox.watchdog import (
     answer_matches,
     contains_expected_indicators,
 )
-from cybertoolbox.webapp import _workspace_path, render_layout, render_topology
+from cybertoolbox.webapp import _value, _workspace_path, render_layout, render_topology
 from cybertoolbox.cli import print_menu_item, responsive_banner
 from cybertoolbox.context_info import local_context
 
@@ -79,6 +79,19 @@ class SafetyTests(unittest.TestCase):
         self.assertNotIn("<script>alert(1)</script>", page)
         self.assertIn("&lt;script&gt;", page)
         self.assertIn('name="viewport"', page)
+        self.assertIn('id="loading-overlay"', page)
+
+    def test_structured_lists_use_one_aligned_table(self):
+        rendered = _value(
+            [
+                {"address": "192.168.1.5", "hostname": "alpha.home"},
+                {"address": "192.168.1.27", "hostname": "beta.home"},
+            ]
+        )
+        self.assertEqual(rendered.count("class='data-table'"), 1)
+        self.assertEqual(rendered.count("<th>address</th>"), 1)
+        self.assertEqual(rendered.count("<th>hostname</th>"), 1)
+        self.assertEqual(rendered.count("<tbody>"), 1)
 
     def test_terminal_banner_becomes_compact_on_small_screens(self):
         with patch("cybertoolbox.cli.terminal_width", return_value=40):

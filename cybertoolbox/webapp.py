@@ -95,9 +95,26 @@ font:inherit;outline:none}input:focus,select:focus,textarea:focus{border-color:v
 input[type=checkbox]{width:auto;accent-color:var(--signal)}.check{display:flex;
 align-items:flex-start;gap:9px}.notice{padding:13px 15px;border-left:3px solid
 var(--signal);background:rgba(12,30,24,.82);margin-bottom:16px}.error{border-color:
-var(--danger);color:#ffdce1}table{width:100%;border-collapse:collapse;font-size:13px}
+var(--danger);color:#ffdce1}.table-wrap{width:100%;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;
-vertical-align:top}th{color:var(--signal)}pre{max-width:100%;overflow:auto;
+vertical-align:top}th{color:var(--signal)}.key-table>tbody>tr>th{width:28%;
+min-width:150px}.data-table{min-width:520px}.data-table>thead>tr>th{white-space:nowrap;
+background:#111114}.data-table>tbody>tr:nth-child(even){background:rgba(255,255,255,.025)}
+.data-table td,.data-table th{overflow-wrap:anywhere}.loading-overlay{position:fixed;
+inset:0;z-index:100;display:none;place-items:center;padding:20px;background:rgba(2,2,3,.88);
+backdrop-filter:blur(5px)}.loading-overlay.active{display:grid}.loading-panel{
+width:min(680px,100%);padding:24px;border:1px solid var(--signal);background:#08080a;
+box-shadow:0 0 48px rgba(214,0,169,.28)}.loading-head{display:flex;
+justify-content:space-between;gap:20px;color:var(--signal);font-weight:700}
+.loading-track{height:5px;margin:18px 0;background:#26262a;overflow:hidden}
+.loading-track:after{content:"";display:block;width:38%;height:100%;background:var(--accent);
+box-shadow:0 0 12px var(--accent);animation:scan 1.15s ease-in-out infinite}
+@keyframes scan{from{transform:translateX(-110%)}to{transform:translateX(285%)}}
+.loading-log{height:150px;margin:0;overflow:auto;border:1px solid var(--line);
+background:#020203;color:#d8d8dc;font-size:12px}.loading-log span{display:block;
+padding:3px 0}.loading-log span:before{content:"> ";color:var(--accent)}
+pre{max-width:100%;overflow:auto;
 white-space:pre-wrap;word-break:break-word;padding:16px;border:1px solid var(--line);
 background:#020604;color:#c9fbe0}ul.clean{padding:0;list-style:none}ul.clean li{
 padding:9px 0;border-bottom:1px dashed var(--line)}.hero{max-width:850px;margin:6vh auto}
@@ -107,7 +124,7 @@ height:auto;border-right:0;border-bottom:1px solid var(--line)}.brand{margin-bot
 nav{display:flex;overflow-x:auto}nav a{white-space:nowrap;border-left:0;
 border-bottom:2px solid transparent}.card,.card.wide{grid-column:span 6}}
 @media(max-width:600px){main{padding:22px 14px 40px}.card,.card.wide,.card.full{
-grid-column:1/-1}.topline{display:block}table{display:block;overflow-x:auto}
+grid-column:1/-1}.topline{display:block}.table-wrap{overflow-x:auto}
 .sidebar{padding:10px}.brand{display:none}.app-grid{grid-template-columns:repeat(2,1fr)}
 .app{min-height:105px}.context-bar{position:sticky;top:0;z-index:4;font-size:12px}}
 """
@@ -119,8 +136,29 @@ def _value(value: Any) -> str:
             f"<tr><th>{escape(str(key))}</th><td>{_value(item)}</td></tr>"
             for key, item in value.items()
         )
-        return f"<table>{rows}</table>"
+        return (
+            "<div class='table-wrap'><table class='key-table'>"
+            f"<tbody>{rows}</tbody></table></div>"
+        )
     if isinstance(value, list):
+        if value and all(isinstance(item, dict) for item in value):
+            headers: list[str] = []
+            for item in value:
+                for key in item:
+                    name = str(key)
+                    if name not in headers:
+                        headers.append(name)
+            heading = "".join(f"<th>{escape(key)}</th>" for key in headers)
+            rows = "".join(
+                "<tr>"
+                + "".join(f"<td>{_value(item.get(key))}</td>" for key in headers)
+                + "</tr>"
+                for item in value
+            )
+            return (
+                "<div class='table-wrap'><table class='data-table'>"
+                f"<thead><tr>{heading}</tr></thead><tbody>{rows}</tbody></table></div>"
+            )
         return (
             "<ul class='clean'>"
             + "".join(f"<li>{_value(item)}</li>" for item in value)
@@ -230,11 +268,65 @@ SESSION LOCALE ACTIVE</div></div>{nav}</aside><main><div class="topline"><div>
 <span class="muted">LOCAL // AUTHORIZED</span></div>
 <div class="context-bar"><span id="live-clock">{escape(context['time'])}</span>
 <span>{escape(context['timezone'])}</span><span>{escape(context['platform'])}</span></div>
-{body}</main></div><script>
+{body}</main></div>
+<div class="loading-overlay" id="loading-overlay" role="status" aria-live="polite">
+<section class="loading-panel"><div class="loading-head">
+<span id="loading-title">OPÉRATION EN COURS</span><span id="loading-time">00:00</span>
+</div><div class="loading-track"></div><pre class="loading-log" id="loading-log"></pre>
+<p class="muted">Gardez cette page ouverte. Le résultat s'affichera automatiquement.</p>
+</section></div><script>
 setInterval(()=>{{const e=document.getElementById('live-clock');if(e)e.textContent=new Date().toLocaleTimeString();}},1000);
 function locate(){{if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(p=>{{
 document.querySelector('[name=latitude]').value=p.coords.latitude.toFixed(5);
 document.querySelector('[name=longitude]').value=p.coords.longitude.toFixed(5);}});}}
+const loadingSteps={{
+discover:["Validation du réseau privé autorisé","Sélection de Nmap ou du moteur portable",
+"Envoi des sondes de découverte","Collecte des hôtes ayant répondu",
+"Résolution des noms disponibles","Préparation du résultat"],
+scan:["Validation de la cible et des ports","Sélection de Nmap ou du moteur portable",
+"Test des ports demandés","Identification des services disponibles",
+"Préparation du résultat"],
+profile:["Validation de la cible","Collecte des noms et voisins réseau",
+"Observation des services","Estimation du type d'appareil",
+"Construction de la fiche technique"],
+wireless:["Vérification des capacités du système","Interrogation des API locales",
+"Normalisation des informations disponibles","Préparation du résultat sans-fil"],
+headers:["Ouverture de la connexion HTTP","Lecture des en-têtes exposés",
+"Analyse des politiques de sécurité","Préparation des constats"],
+tools:["Validation de l'entrée","Lancement de l'analyse locale",
+"Classement des observations","Préparation du résultat technique"],
+context:["Validation des coordonnées","Interrogation du service météo",
+"Lecture des conditions actuelles","Préparation du contexte"],
+lab:["Création de l'espace pédagogique","Génération des artefacts inoffensifs",
+"Vérification des fichiers du laboratoire"],
+settings:["Validation des préférences","Écriture de la configuration locale"],
+default:["Validation de la demande","Traitement local en cours","Préparation de la réponse"]
+}};
+document.querySelectorAll("form").forEach(form=>form.addEventListener("submit",event=>{{
+if(form.dataset.loading==="1")return;
+event.preventDefault();
+form.dataset.loading="1";
+const route=(new URL(form.action)).pathname.split("/").filter(Boolean).pop()||"default";
+const action=form.querySelector("[name=action]")?.value||route;
+const steps=loadingSteps[action]||loadingSteps[route]||loadingSteps.default;
+const overlay=document.getElementById("loading-overlay");
+const log=document.getElementById("loading-log");
+const timer=document.getElementById("loading-time");
+const title=document.getElementById("loading-title");
+title.textContent=(route==="recon"?"RECONNAISSANCE":route.toUpperCase())+" EN COURS";
+overlay.classList.add("active");
+let elapsed=0,index=0;
+const addLine=text=>{{const line=document.createElement("span");line.textContent=text;
+log.appendChild(line);log.scrollTop=log.scrollHeight;}};
+const subject=form.querySelector("[name=subject],[name=target],[name=url]");
+if(subject?.value)addLine("Cible déclarée : "+subject.value);
+addLine(steps[index++]);
+setInterval(()=>{{elapsed++;timer.textContent=String(Math.floor(elapsed/60)).padStart(2,"0")
++":"+String(elapsed%60).padStart(2,"0");}},1000);
+setInterval(()=>{{if(index<steps.length)addLine(steps[index++]);
+else addLine("Traitement toujours actif, attente de la réponse...");}},1800);
+setTimeout(()=>form.requestSubmit?form.requestSubmit():form.submit(),90);
+}}));
 </script></body></html>"""
 
 
