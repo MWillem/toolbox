@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cyber-learning-toolbox"
-version = "2.7.0"
+version = "2.8.0"
 description = "Toolbox guidée pour apprendre les bases d'un audit de cybersécurité."
 readme = "README.md"
 requires-python = ">=3.10"

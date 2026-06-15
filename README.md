@@ -41,6 +41,7 @@ remplacées par des titres compacts sur téléphone ou dans une fenêtre étroit
 11. Vue globale des capacités
 12. Interface graphique responsive
 13. Données enregistrées
+14. Wi-Fi et Bluetooth pédagogiques
 ```
 
 ## Interface graphique
@@ -67,8 +68,8 @@ sh gui.sh
 
 La page `http://127.0.0.1:8765` s'ouvre dans le navigateur. Elle contient le
 tableau de bord, le profil technique d'un appareil autorisé, l'audit HTTP, le
-laboratoire local, les rapports et les paramètres. Les conditions d'utilisation
-doivent être acceptées avant d'accéder aux modules.
+laboratoire local, le module Wi-Fi/Bluetooth, les rapports et les paramètres.
+Les conditions d'utilisation doivent être acceptées avant d'accéder aux modules.
 
 Sur Termux, si le navigateur ne s'ouvre pas automatiquement :
 
@@ -335,17 +336,80 @@ La commande suivante affiche un résumé directement dans l'application :
 
 ## Wi-Fi et Bluetooth
 
-Les commandes `wifi` et `bluetooth` lisent uniquement les informations
-autorisées par le système :
+Le menu **Wi-Fi et Bluetooth pédagogiques** propose :
 
-- Windows : `netsh` et liste des périphériques Bluetooth connus ;
-- Linux : `nmcli`, `iwgetid` et `bluetoothctl` lorsqu'ils sont installés ;
-- Termux : informations Wi-Fi si Termux:API et les permissions Android sont
-  disponibles.
+- un scan en lecture seule des réseaux Wi-Fi visibles ;
+- SSID, BSSID, canal, fréquence, signal et sécurité annoncée lorsqu'ils sont disponibles ;
+- une explication des réseaux ouverts, WEP, WPA2 et WPA3 ;
+- les appareils Bluetooth connus ou visibles exposés par le système ;
+- un diagnostic des outils, permissions et limites du matériel ;
+- un laboratoire WPA2 entièrement hors ligne.
+
+Les moteurs utilisés sont :
+
+- Windows : `netsh` et `Get-PnpDevice` ;
+- Linux : `nmcli` et `bluetoothctl` ;
+- Termux : `termux-wifi-scaninfo` avec Termux:API.
 
 Elles ne capturent pas les paquets, ne forcent pas une association et ne
 permettent pas de suivre secrètement un appareil. Android peut limiter fortement
 ces informations selon sa version et ses permissions.
+
+### Utilisation sur Termux
+
+Installer l'application **Termux:API** depuis la même source que Termux, puis :
+
+```bash
+pkg update
+pkg install termux-api
+termux-wifi-scaninfo
+sh run.sh
+```
+
+Android peut demander les permissions de localisation ou d'appareils à
+proximité. Sur certaines versions, le service de localisation doit également
+être activé. La 4G/5G peut rester active : elle n'empêche pas l'observation des
+réseaux Wi-Fi proches.
+
+Voir un réseau n'autorise pas à le tester. Pour une démonstration, sélectionner
+uniquement le point d'accès de laboratoire fourni et autorisé.
+
+### Laboratoire WPA2 hors ligne
+
+Le laboratoire demande :
+
+1. un SSID fictif ou celui du point d'accès temporaire du laboratoire ;
+2. un mot de passe temporaire choisi pour la démonstration ;
+3. une petite liste locale de candidats.
+
+Il reproduit la dérivation WPA2 `PBKDF2-HMAC-SHA1` avec 4096 itérations. Il ne
+se connecte à aucun réseau, ne capture aucun paquet et ne désauthentifie aucun
+appareil. Le mot de passe retrouvé est affiché pendant la session, mais le
+rapport conserve uniquement le résultat, le nombre d'essais et la durée.
+
+```powershell
+.\run.bat wifi-lab
+```
+
+### Profiler enrichi
+
+Le profil technique d'un appareil autorisé cherche son nom à travers plusieurs
+sources disponibles :
+
+- nom fourni lors de la sélection ;
+- DNS inverse ;
+- mDNS avec Avahi sur les systèmes compatibles ;
+- NetBIOS sur certains équipements Windows ;
+- nom Bluetooth dans l'inventaire séparé lorsque le système l'expose.
+
+Chaque nom est accompagné de sa source et d'un niveau de confiance. Les noms
+radio et réseau sont déclaratifs : ils peuvent être modifiés et ne prouvent
+jamais l'identité du propriétaire.
+
+Le mode Watchdog contient également un **profil technique de l'environnement**.
+Il décrit l'appareil qui exécute la toolbox, les réseaux Wi-Fi visibles et les
+appareils Bluetooth exposés. Sur Termux, le modèle et le fabricant du téléphone
+peuvent être lus localement avec `getprop`.
 
 ## Installation rapide
 

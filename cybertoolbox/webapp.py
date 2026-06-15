@@ -13,6 +13,13 @@ import webbrowser
 from .device_profile import build_device_profile
 from .labs.http_headers import analyze_headers, fetch_headers
 from .labs.local_lab import prepare_lab
+from .labs.cracking import crack_wpa2_demo, derive_wpa2_pmk
+from .labs.wireless import (
+    bluetooth_inventory,
+    local_device_identity,
+    wifi_scan,
+    wireless_diagnostics,
+)
 from .reports import list_reports, read_report, save_professional_report
 from .settings import Settings, load_settings, save_settings, settings_summary
 
@@ -58,9 +65,9 @@ var(--signal);box-shadow:0 0 12px var(--signal)}.card.wide{grid-column:span 8}
 color:#03100a;background:var(--signal);font:inherit;font-weight:700;cursor:pointer;
 clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)}
 .button:hover,button:hover{background:var(--accent);color:#03100a}form{display:grid;
-gap:14px}label{display:grid;gap:6px;color:var(--muted)}input,select{width:100%;
+gap:14px}label{display:grid;gap:6px;color:var(--muted)}input,select,textarea{width:100%;
 border:1px solid var(--line);background:#07100d;color:var(--text);padding:11px 12px;
-font:inherit;outline:none}input:focus,select:focus{border-color:var(--signal)}
+font:inherit;outline:none}input:focus,select:focus,textarea:focus{border-color:var(--signal)}
 input[type=checkbox]{width:auto;accent-color:var(--signal)}.check{display:flex;
 align-items:flex-start;gap:9px}.notice{padding:13px 15px;border-left:3px solid
 var(--signal);background:rgba(12,30,24,.82);margin-bottom:16px}.error{border-color:
@@ -127,7 +134,8 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
         )
     nav = """<nav><a href="/">Tableau de bord</a><a href="/profile">Profil appareil</a>
 <a href="/headers">Audit HTTP</a><a href="/lab">Laboratoire</a>
-<a href="/reports">Rapports</a><a href="/settings">Paramètres</a></nav>"""
+<a href="/wireless">Sans-fil</a><a href="/reports">Rapports</a>
+<a href="/settings">Paramètres</a></nav>"""
     return f"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(title)}</title><style>{CSS}</style></head><body><div class="shell">
@@ -155,6 +163,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/profile": self._profile,
             "/headers": self._headers,
             "/lab": self._lab,
+            "/wireless": self._wireless,
             "/reports": self._reports,
             "/report": lambda: self._report(route.query),
             "/settings": self._settings,
@@ -176,6 +185,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/profile": lambda: self._run_profile(data),
             "/headers": lambda: self._run_headers(data),
             "/lab": self._prepare_lab,
+            "/wireless": lambda: self._run_wireless(data),
             "/settings": lambda: self._save_settings(data),
         }
         handler = handlers.get(urlparse(self.path).path)
@@ -220,6 +230,8 @@ type probable et confiance.</p><a href="/profile">OUVRIR &gt;</a></section>
 sécurité.</p><a href="/headers">OUVRIR &gt;</a></section>
 <section class="card"><h2>Lab local</h2><p>Journaux suspects, payload factice
 et script risqué.</p><a href="/lab">OUVRIR &gt;</a></section>
+<section class="card"><h2>Wi-Fi et Bluetooth</h2><p>Scan visible, diagnostic,
+profil local et lab WPA2 hors ligne.</p><a href="/wireless">OUVRIR &gt;</a></section>
 <section class="card full"><h2>Configuration active</h2>
 {_value(dict(settings_summary(settings)))}</section></div>"""
         self._send(render_layout("Tableau de bord", body))
@@ -345,6 +357,67 @@ exécuté. Tout reste dans <code>lab_workspace</code>.</p></section>
             "Rapports",
             f"<section class='card full'><h2>Archives Markdown</h2><ul class='clean'>{items}</ul></section>",
         ))
+
+    def _wireless(self) -> None:
+        body = f"""<div class="grid"><section class="card wide">
+<h2>Environnement sans-fil</h2><p class="muted">Toutes les collectes utilisent
+les API autorisées du système. Aucun appairage, connexion, capture ou paquet de
+désauthentification n'est émis.</p><form method="post" action="/wireless">
+{self._token()}<label>Action<select name="action">
+<option value="wifi">Réseaux Wi-Fi visibles</option>
+<option value="bluetooth">Bluetooth connu ou visible</option>
+<option value="environment">Profil de l'appareil courant</option>
+<option value="diagnostic">Diagnostic des capacités</option>
+</select></label><button type="submit">EXÉCUTER</button></form></section>
+<section class="card"><h2>Lab WPA2 hors ligne</h2>
+<form method="post" action="/wireless">{self._token()}
+<input type="hidden" name="action" value="wifi_lab">
+<label>SSID fictif<input name="ssid" value="CTOS-LAB" required></label>
+<label>Mot de passe temporaire<input type="password" name="secret" required></label>
+<label>Candidats, un par ligne<textarea name="candidates" rows="6"
+required>motdepasse
+classe-2026
+password</textarea></label>
+<button type="submit">TESTER HORS LIGNE</button></form></section>
+{self._result("/wireless")}</div>"""
+        self._send(render_layout("Wi-Fi et Bluetooth", body))
+
+    def _run_wireless(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            action = _field(data, "action")
+            if action == "wifi":
+                result = wifi_scan()
+            elif action == "bluetooth":
+                result = bluetooth_inventory()
+            elif action == "environment":
+                result = {
+                    "identity": local_device_identity(),
+                    "wifi": wifi_scan(),
+                    "bluetooth": bluetooth_inventory(),
+                }
+            elif action == "diagnostic":
+                result = wireless_diagnostics()
+            elif action == "wifi_lab":
+                ssid = _field(data, "ssid", "CTOS-LAB")
+                secret = _field(data, "secret")
+                candidates = _field(data, "candidates").splitlines()
+                result = crack_wpa2_demo(
+                    ssid,
+                    derive_wpa2_pmk(ssid, secret),
+                    candidates,
+                )
+                result["notice"] = (
+                    "Le secret est affiché uniquement dans cette page et n'est pas enregistré."
+                )
+            else:
+                raise ValueError("Action sans-fil inconnue.")
+            self.state.result_title = "Résultat sans-fil"
+            self.state.result_route = "/wireless"
+            self.state.result = result
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/wireless")
 
     def _report(self, query: str) -> None:
         name = parse_qs(query).get("name", [""])[0]

@@ -16,6 +16,7 @@ class DeviceProfile:
     target: str
     address: str
     hostname: str
+    name_observations: list[dict[str, str]] = field(default_factory=list)
     mac_address: str = ""
     manufacturer: str = ""
     device_type: str = "Appareil réseau non déterminé"
@@ -38,10 +39,8 @@ def build_device_profile(
     allow_internet: bool = False,
 ) -> DeviceProfile:
     address = resolve_authorized_target(target)[0]
-    try:
-        hostname = socket.gethostbyaddr(address)[0]
-    except socket.herror:
-        hostname = target if target != address else "-"
+    name_observations = collect_device_names(address, target)
+    hostname = name_observations[0]["name"] if name_observations else "-"
 
     services, engine = scan_ports(
         address,
@@ -72,6 +71,7 @@ def build_device_profile(
         target=target,
         address=address,
         hostname=hostname,
+        name_observations=name_observations,
         mac_address=mac,
         manufacturer=manufacturer,
         device_type=device_type,
@@ -82,6 +82,58 @@ def build_device_profile(
         correlations=correlations,
         limitations=limitations,
     )
+
+
+def collect_device_names(address: str, supplied_target: str = "") -> list[dict[str, str]]:
+    observations: list[dict[str, str]] = []
+
+    def add(name: str, source: str, confidence: str) -> None:
+        clean = name.strip().rstrip(".")
+        if not clean or clean == address:
+            return
+        if any(item["name"].lower() == clean.lower() for item in observations):
+            return
+        observations.append({"name": clean, "source": source, "confidence": confidence})
+
+    if supplied_target and supplied_target != address:
+        add(supplied_target, "Nom fourni pour la cible", "moyenne")
+    try:
+        add(socket.gethostbyaddr(address)[0], "DNS inverse", "moyenne")
+    except OSError:
+        pass
+
+    commands = (
+        (["avahi-resolve-address", address], "mDNS/Avahi", "moyenne"),
+        (["nmblookup", "-A", address], "NetBIOS", "faible"),
+    )
+    for command, source, confidence in commands:
+        if not shutil.which(command[0]):
+            continue
+        try:
+            process = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=5,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            continue
+        if process.returncode != 0:
+            continue
+        if source == "mDNS/Avahi":
+            parts = process.stdout.strip().split()
+            if len(parts) >= 2:
+                add(parts[-1], source, confidence)
+        else:
+            for line in process.stdout.splitlines():
+                match = re.match(r"\s*([^\s]+)\s+<00>\s+-\s+<ACTIVE>", line)
+                if match:
+                    add(match.group(1), source, confidence)
+                    break
+    return observations
 
 
 def lookup_neighbor(address: str) -> tuple[str, str]:

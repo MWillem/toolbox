@@ -17,9 +17,19 @@ from cybertoolbox.labs.http_headers import analyze_headers
 from cybertoolbox.labs.local_lab import prepare_lab
 from cybertoolbox.labs.log_analysis import analyze_log
 from cybertoolbox.labs.passwords import analyze_password
-from cybertoolbox.labs.cracking import crack_demo_hash
+from cybertoolbox.labs.cracking import (
+    crack_demo_hash,
+    crack_wpa2_demo,
+    derive_wpa2_pmk,
+)
 from cybertoolbox.labs.payloads import analyze_payload_file, create_harmless_payload
 from cybertoolbox.labs.script_analysis import analyze_script
+from cybertoolbox.labs.wireless import (
+    _parse_netsh_scan,
+    _parse_nmcli_scan,
+    _parse_termux_scan,
+    wifi_security_lesson,
+)
 from cybertoolbox.device_profile import infer_device_type
 from cybertoolbox.history import (
     compare_port_scans,
@@ -113,6 +123,41 @@ class LabTests(unittest.TestCase):
         result = crack_demo_hash(target, ["admin", "bonjour", "secret"])
         self.assertEqual(result["found"], "bonjour")
         self.assertEqual(result["tested"], 2)
+
+    def test_wpa2_offline_lab_finds_demo_password(self):
+        target = derive_wpa2_pmk("CTOS-LAB", "classe-2026")
+        result = crack_wpa2_demo(
+            "CTOS-LAB",
+            target,
+            ["motdepasse", "classe-2026", "autre-secret"],
+        )
+        self.assertEqual(result["found"], "classe-2026")
+        self.assertEqual(result["tested"], 2)
+
+    def test_wifi_parsers_return_common_shape(self):
+        nmcli = _parse_nmcli_scan(
+            r"Lab\:Wifi:AA\:BB\:CC\:DD\:EE\:FF:6:2437:80:WPA2"
+        )
+        netsh = _parse_netsh_scan(
+            "SSID 1 : Classe\n"
+            "    Authentication : WPA2-Personal\n"
+            "    BSSID 1 : aa:bb:cc:dd:ee:ff\n"
+            "         Signal : 90%\n"
+            "         Channel : 11\n"
+        )
+        termux = _parse_termux_scan(
+            '[{"ssid":"MobileLab","bssid":"11:22:33:44:55:66",'
+            '"frequency_mhz":2412,"rssi":-45,"capabilities":"[WPA2-PSK]"}]'
+        )
+        for result in (nmcli, netsh, termux):
+            self.assertEqual(len(result), 1)
+            self.assertIn("ssid", result[0])
+            self.assertIn("security", result[0])
+        self.assertEqual(nmcli[0]["ssid"], "Lab:Wifi")
+        self.assertEqual(termux[0]["channel"], 1)
+
+    def test_wifi_security_lesson_flags_open_networks(self):
+        self.assertTrue(any("ouvert" in item.lower() for item in wifi_security_lesson("OPEN")))
 
     def test_harmless_payload_can_be_analyzed(self):
         with tempfile.TemporaryDirectory() as directory:

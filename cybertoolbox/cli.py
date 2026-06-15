@@ -33,7 +33,7 @@ from .mission import (
     rename_mission,
     service_recommendations,
 )
-from .labs.cracking import crack_demo_hash
+from .labs.cracking import crack_demo_hash, crack_wpa2_demo, derive_wpa2_pmk
 from .labs.crypto_basics import (
     base64_decode,
     base64_encode,
@@ -52,7 +52,14 @@ from .labs.passwords import analyze_password
 from .labs.payloads import analyze_payload_file, create_harmless_payload
 from .labs.script_analysis import analyze_script
 from .labs.system_audit import audit_system
-from .labs.wireless import bluetooth_inventory, wifi_inventory
+from .labs.wireless import (
+    bluetooth_inventory,
+    local_device_identity,
+    wifi_inventory,
+    wifi_scan,
+    wifi_security_lesson,
+    wireless_diagnostics,
+)
 from .reports import (
     delete_all_reports,
     delete_report,
@@ -84,7 +91,7 @@ BANNER = r"""
    | || |_| | |_| | |___| |_) | |_| /  \
    |_| \___/ \___/|_____|____/ \___/_/\_\
 
-       CYBER LEARNING TOOLBOX 2.7
+       CYBER LEARNING TOOLBOX 2.8
 """
 
 TITLES = {
@@ -134,6 +141,8 @@ la loi et protéger les données rencontrées.
 
 La découverte et le scan sont limités aux réseaux privés. Les exercices de
 mots de passe et de payloads s'exécutent uniquement en laboratoire local.
+Le scan Wi-Fi observe les réseaux visibles sans s'y connecter. Le lab WPA2
+reste hors ligne et n'effectue aucune capture ni désauthentification.
 Le profil d'un appareil réel exige l'accord de son propriétaire ou responsable.
 Les fiches décrivent des actifs techniques et ne doivent pas servir à profiler
 ou suivre une personne.
@@ -143,7 +152,7 @@ ou suivre une personne.
 
 COMPACT_BANNER = """
 ╔══════════════════════════════╗
-║  CYBER LEARNING TOOLBOX 2.7  ║
+║  CYBER LEARNING TOOLBOX 2.8  ║
 ╚══════════════════════════════╝
 """
 
@@ -152,7 +161,8 @@ CONDITIONS D'UTILISATION
 
 Usage pédagogique et audits explicitement autorisés uniquement.
 Les scans restent limités aux réseaux privés. Les exercices de mots
-de passe et payloads restent locaux. Aucun profil personnel ni suivi.
+de passe, WPA2 et payloads restent locaux. Le Wi-Fi visible est lu
+sans connexion ni capture. Aucun profil personnel ni suivi.
 """
 
 
@@ -262,6 +272,8 @@ def build_parser() -> argparse.ArgumentParser:
     script.add_argument("file", type=Path)
 
     sub.add_parser("wifi", help="Afficher les informations Wi-Fi autorisées par le système")
+    sub.add_parser("wifi-lab", help="Lancer le laboratoire WPA2 hors ligne")
+    sub.add_parser("wireless-diagnostic", help="Diagnostiquer les capacités Wi-Fi/Bluetooth")
     sub.add_parser("bluetooth", help="Afficher les appareils Bluetooth connus du système")
 
     sub.add_parser("manual", help="Afficher le manuel guidé")
@@ -342,7 +354,11 @@ def run_command(args: argparse.Namespace) -> int:
     elif args.command == "script":
         run_script_analysis(args.file)
     elif args.command == "wifi":
-        run_wireless_inventory("wifi")
+        run_wifi_scan()
+    elif args.command == "wifi-lab":
+        run_wifi_password_lab()
+    elif args.command == "wireless-diagnostic":
+        run_wireless_diagnostic()
     elif args.command == "bluetooth":
         run_wireless_inventory("bluetooth")
     elif args.command == "manual":
@@ -844,6 +860,13 @@ def run_device_profile(target: str, ports_value: str) -> DeviceProfile:
         allow_internet=SETTINGS.internet_correlation,
     )
     print(f"Nom réseau      : {profile.hostname}")
+    if profile.name_observations:
+        print("Sources du nom  :")
+        for observation in profile.name_observations:
+            print(
+                f"- {observation['name']} | {observation['source']} | "
+                f"confiance {observation['confidence']}"
+            )
     print(f"Adresse IP      : {profile.address}")
     print(f"Adresse MAC     : {profile.mac_address or 'indisponible'}")
     print(f"Fabricant       : {profile.manufacturer or 'non déterminé'}")
@@ -902,6 +925,15 @@ def run_device_profile(target: str, ports_value: str) -> DeviceProfile:
             f"Appareil autorisé : `{profile.address}`\n\n"
             f"MAC : `{profile.mac_address or 'indisponible'}`\n\n"
             f"Fabricant : {profile.manufacturer or 'non déterminé'}"
+            + (
+                "\n\nNoms observés : "
+                + "; ".join(
+                    f"{item['name']} ({item['source']}, {item['confidence']})"
+                    for item in profile.name_observations
+                )
+                if profile.name_observations
+                else ""
+            )
             + (
                 "\n\nCorrélations : " + "; ".join(profile.correlations)
                 if profile.correlations
@@ -988,6 +1020,7 @@ def run_watchdog_menu() -> None:
     print_menu_item("1", "Opération Signal Fantôme - scénario fictif local")
     print_menu_item("2", "Profiler un appareil réel autorisé du réseau privé")
     print_menu_item("3", "Profiler passivement un domaine public")
+    print_menu_item("4", "Profiler l'environnement local et l'appareil courant")
     choice = input("Choix : ").strip()
     if choice == "1":
         run_watchdog_mode()
@@ -998,6 +1031,8 @@ def run_watchdog_menu() -> None:
             run_device_profile(target, ports)
     elif choice == "3":
         run_public_asset_profile(input("Nom de domaine : ").strip())
+    elif choice == "4":
+        run_environment_profile()
     else:
         print("Choix invalide.")
 
@@ -1104,6 +1139,7 @@ def interactive_menu() -> int:
         "11": (translate(SETTINGS.language, "menu_overview"), show_overview),
         "12": ("Interface graphique responsive", _interactive_gui),
         "13": ("Données enregistrées", manage_stored_data),
+        "14": ("Wi-Fi et Bluetooth pédagogiques", run_wireless_menu),
     }
     while True:
         clear_screen()
@@ -1215,9 +1251,13 @@ def _interactive_password_lab() -> None:
     _lesson("password")
     print_menu_item("1", "Évaluer la robustesse d'un mot de passe")
     print_menu_item("2", "Démontrer une attaque par dictionnaire sur un hash créé ici")
+    print_menu_item("3", "Démontrer la résistance d'un mot de passe Wi-Fi WPA2 hors ligne")
     choice = input("Choix : ").strip()
     if choice == "1":
         run_password()
+        return
+    if choice == "3":
+        run_wifi_password_lab()
         return
     if choice != "2":
         print("Choix invalide.")
@@ -1532,12 +1572,24 @@ def run_wireless_inventory(kind: str) -> None:
     title = "Inventaire Wi-Fi" if kind == "wifi" else "Inventaire Bluetooth"
     print(f"Moteur : {result['engine']}")
     print(result["description"])
-    print(result["output"] or "Aucune information retournée.")
+    items = result.get("items", [])
+    if items:
+        for index, item in enumerate(items, start=1):
+            print_menu_item(str(index), json.dumps(item, ensure_ascii=False))
+    else:
+        print(result["output"] or "Aucune information retournée.")
+    for limitation in result.get("limitations", []):
+        print(f"- Limite : {limitation}")
     _report(
         title,
         [
             ("Source", f"{result['engine']} - {result['description']}"),
-            ("Résultat brut", str(result["output"] or "Aucune information retournée.")),
+            (
+                "Résultat",
+                json.dumps(items, ensure_ascii=False, indent=2)
+                if items
+                else str(result["output"] or "Aucune information retournée."),
+            ),
             (
                 "Limites",
                 "Lecture seule des informations exposées par le système. "
@@ -1545,6 +1597,155 @@ def run_wireless_inventory(kind: str) -> None:
             ),
         ],
     )
+
+
+def run_environment_profile() -> None:
+    print("\n=== PROFIL TECHNIQUE DE L'ENVIRONNEMENT ===")
+    print(
+        "Ce profil décrit l'appareil qui exécute la toolbox et les informations "
+        "radio exposées par son système. Il n'identifie aucune personne."
+    )
+    identity = local_device_identity()
+    wifi = wifi_scan()
+    bluetooth = bluetooth_inventory()
+    print("\nAppareil courant :")
+    for key, value in identity.items():
+        print(f"- {key} : {value or 'indisponible'}")
+    print(f"\nRéseaux Wi-Fi visibles : {len(wifi['networks'])}")
+    print(f"Appareils Bluetooth exposés : {len(bluetooth.get('items', []))}")
+    print("Sources : système local, API Wi-Fi et inventaire Bluetooth autorisés.")
+    print("Confiance : élevée pour le système local, variable pour les noms radio.")
+    _report(
+        "Profil technique de l'environnement",
+        [
+            ("Appareil courant", json.dumps(identity, ensure_ascii=False, indent=2)),
+            ("Wi-Fi visible", json.dumps(wifi["networks"], ensure_ascii=False, indent=2)),
+            (
+                "Bluetooth connu ou visible",
+                json.dumps(bluetooth.get("items", []), ensure_ascii=False, indent=2),
+            ),
+            (
+                "Limites",
+                "Les noms radio sont déclaratifs. Bluetooth désactivé, permissions Android, "
+                "MAC aléatoires et pare-feu peuvent réduire les informations disponibles.",
+            ),
+        ],
+    )
+
+
+def run_wifi_scan() -> None:
+    result = wifi_scan()
+    print("\n=== RÉSEAUX WI-FI VISIBLES ===")
+    print(f"Moteur : {result['engine']}")
+    if not result["available"]:
+        print(result["description"])
+        for limitation in result["limitations"]:
+            print(f"- {limitation}")
+        return
+    networks = result["networks"]
+    if not networks:
+        print("Aucun réseau exposé par le système.")
+    for index, network in enumerate(networks, start=1):
+        print_menu_item(
+            str(index),
+            (
+                f"{network['ssid'] or '<SSID masqué>'} | "
+                f"{network['bssid'] or 'BSSID indisponible'} | "
+                f"canal {network['channel'] or '?'} | "
+                f"{network['signal']} dBm | {network['security']}"
+            ),
+        )
+    if networks:
+        try:
+            selected = int(input("\nNuméro à expliquer [0 pour ignorer] : ").strip() or "0") - 1
+        except ValueError:
+            selected = -1
+        if 0 <= selected < len(networks):
+            print("\nInterprétation pédagogique :")
+            for lesson in wifi_security_lesson(str(networks[selected]["security"])):
+                print(f"- {lesson}")
+    for limitation in result["limitations"]:
+        print(f"- Limite : {limitation}")
+    _report(
+        "Inventaire Wi-Fi",
+        [
+            ("Source", f"{result['engine']} - {result['description']}"),
+            ("Réseaux visibles", json.dumps(networks, ensure_ascii=False, indent=2)),
+            ("Limites", "\n".join(f"- {item}" for item in result["limitations"])),
+        ],
+    )
+
+
+def run_wifi_password_lab() -> None:
+    clear_screen()
+    print(format_guide("wifi_password"))
+    print(
+        "Ce laboratoire ne contacte aucun point d'accès. Il reproduit localement "
+        "la dérivation de clé WPA2 à partir d'un SSID et d'un secret de démonstration."
+    )
+    ssid = input("SSID fictif du laboratoire [CTOS-LAB] : ").strip() or "CTOS-LAB"
+    secret = getpass("Mot de passe Wi-Fi temporaire du laboratoire : ")
+    target_pmk = derive_wpa2_pmk(ssid, secret)
+    wordlist = Path(
+        input("Petite liste de candidats [labs/wordlists/demo.txt] : ").strip()
+        or "labs/wordlists/demo.txt"
+    )
+    candidates = wordlist.read_text(encoding="utf-8", errors="replace").splitlines()
+    result = crack_wpa2_demo(ssid, target_pmk, candidates)
+    if result["found"] is None:
+        print(
+            f"[NON TROUVÉ] {result['tested']} candidat(s) testé(s) "
+            f"en {result['elapsed']} seconde(s)."
+        )
+    else:
+        print(f"[SUCCÈS] Mot de passe Wi-Fi retrouvé : {result['found']}")
+        print(f"Essais : {result['tested']} | Durée : {result['elapsed']} seconde(s)")
+    _report(
+        "Lab résistance d'un mot de passe Wi-Fi",
+        [
+            ("Méthode", str(result["method"])),
+            ("SSID fictif", ssid),
+            (
+                "Résultat",
+                (
+                    f"Mot de passe retrouvé après {result['tested']} essai(s)."
+                    if result["found"] is not None
+                    else f"Mot de passe non retrouvé après {result['tested']} essai(s)."
+                )
+                + "\n\nLe secret retrouvé n'est volontairement pas enregistré.",
+            ),
+            (
+                "Protection",
+                "Utiliser une phrase longue et unique, WPA2-AES ou WPA3, et désactiver WPS.",
+            ),
+        ],
+    )
+
+
+def run_wireless_diagnostic() -> None:
+    result = wireless_diagnostics()
+    print("\n=== DIAGNOSTIC WI-FI ET BLUETOOTH ===")
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def run_wireless_menu() -> None:
+    clear_screen()
+    print(format_guide("wireless"))
+    print_menu_item("1", "Scanner les réseaux Wi-Fi visibles")
+    print_menu_item("2", "Afficher les appareils Bluetooth connus ou visibles")
+    print_menu_item("3", "Diagnostiquer les capacités du système")
+    print_menu_item("4", "Lancer le laboratoire WPA2 hors ligne")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        run_wifi_scan()
+    elif choice == "2":
+        run_wireless_inventory("bluetooth")
+    elif choice == "3":
+        run_wireless_diagnostic()
+    elif choice == "4":
+        run_wifi_password_lab()
+    else:
+        print("Choix invalide.")
 
 
 def manage_settings() -> None:
@@ -1602,6 +1803,7 @@ RÉSEAU ET ACTIFS
 - Profil : IP, nom réseau, MAC disponible, fabricant disponible, type probable.
 - DNS, TLS, en-têtes HTTP et serveur web local pédagogique.
 - Wi-Fi courant/visible et Bluetooth connu, selon les capacités du système.
+- Profil local : modèle, système, noms réseau et sources de confiance.
 
 INVESTIGATION
 - Analyse de journaux SSH/web.
@@ -1612,6 +1814,7 @@ SYSTÈME ET DONNÉES
 - Audit système, configuration, PATH et permissions.
 - Hash de textes/fichiers, Base64 et chiffrement XOR pédagogique.
 - Lab hors ligne de résistance des mots de passe.
+- Lab WPA2 hors ligne avec affichage temporaire du secret retrouvé.
 
 RESTITUTION
 - Rapports Markdown professionnels, consultation, fusion, HTML et JSON.
@@ -1639,8 +1842,7 @@ def _extra_tools() -> None:
     print_menu_item("8", "Configuration locale")
     print_menu_item("9", "Encodage et chiffrement pédagogique")
     print_menu_item("10", "Analyse statique d'un script")
-    print_menu_item("11", "Informations Wi-Fi")
-    print_menu_item("12", "Appareils Bluetooth connus")
+    print_menu_item("11", "Wi-Fi et Bluetooth pédagogiques")
     choice = input("Choix : ").strip()
     if choice == "1":
         run_system()
@@ -1663,9 +1865,7 @@ def _extra_tools() -> None:
     elif choice == "10":
         run_script_analysis(Path(input("Chemin du script : ").strip()))
     elif choice == "11":
-        run_wireless_inventory("wifi")
-    elif choice == "12":
-        run_wireless_inventory("bluetooth")
+        run_wireless_menu()
     else:
         print("Choix invalide.")
 

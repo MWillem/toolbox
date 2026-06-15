@@ -20,6 +20,13 @@ GUIDES = {
         "how": "Le lab compare un hash local à une liste bornée de candidats. Aucun service distant n'est attaqué.",
         "gain": "Une mesure concrète du coût d'une attaque par dictionnaire et des recommandations.",
     },
+    "wifi_password": {
+        "title": "RESISTANCE D'UN MOT DE PASSE WI-FI",
+        "why": "Montrer qu'un mot de passe WPA2 faible peut être retrouvé hors ligne.",
+        "when": "Uniquement dans un laboratoire avec un SSID et un secret temporaires.",
+        "how": "Le lab reproduit PBKDF2-HMAC-SHA1 avec 4096 itérations sur une petite liste locale.",
+        "gain": "Comprendre le rôle du SSID, du secret, de WPA2/WPA3 et de la désactivation de WPS.",
+    },
     "payload": {
         "title": "ANALYSE DE PAYLOAD",
         "why": "Comprendre ce qu'un payload transporte et quels indices permettent de le détecter.",
@@ -83,6 +90,13 @@ GUIDES = {
         "how": "Le fichier est lu sans exécution et comparé à des règles comme eval, shell=True ou pickle.",
         "gain": "Une liste de points à examiner manuellement avec leur ligne et leur impact possible.",
     },
+    "wireless": {
+        "title": "WI-FI ET BLUETOOTH PEDAGOGIQUES",
+        "why": "Comprendre l'environnement radio exposé par le système sans s'y connecter.",
+        "when": "Pour un inventaire autorisé, un diagnostic matériel ou une démonstration en classe.",
+        "how": "La toolbox utilise netsh, NetworkManager ou Termux:API et lit les appareils Bluetooth connus.",
+        "gain": "SSID, BSSID, canal, signal, sécurité annoncée, limites et recommandations.",
+    },
 }
 
 
@@ -104,7 +118,8 @@ def full_manual() -> str:
         "2. Découvrir les hôtes actifs.\n"
         "3. Scanner les ports des hôtes pertinents.\n"
         "4. Étudier en laboratoire les mots de passe et payloads.\n"
-        "5. Analyser les journaux et le serveur HTTP du lab local.\n"
-        "6. Consulter, fusionner et exporter les rapports.\n"
+        "5. Observer le Wi-Fi/Bluetooth et tester un secret WPA2 hors ligne.\n"
+        "6. Analyser les journaux et le serveur HTTP du lab local.\n"
+        "7. Consulter, fusionner et exporter les rapports.\n"
     )
     return intro + "\n" + "\n".join(format_guide(name) for name in GUIDES)
