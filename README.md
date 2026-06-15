@@ -28,27 +28,33 @@ remplacées par des titres compacts sur téléphone ou dans une fenêtre étroit
    | || |_| | |_| | |___| |_) | |_| /  \
    |_| \___/ \___/|_____|____/ \___/_/\_\
 
-1. Mode Watchdog - opération scénarisée
-2. Mission guidée complète
-3. Mappage réseau - hôtes actifs
-4. Scan de ports - Nmap
-5. Laboratoire local
-6. Lab mots de passe
-7. Gestion des rapports
-8. Manuel et parcours guidé
-9. Outils complémentaires
-10. Paramètres
-11. Vue globale des capacités
-12. Interface graphique responsive
-13. Données enregistrées
-14. Wi-Fi et Bluetooth pédagogiques
+1. Tableau de bord
+2. Opérations guidées
+3. Reconnaissance et profils
+4. Laboratoires pédagogiques
+5. Wi-Fi et Bluetooth
+6. Données, rapports et exposition
+7. Interface graphique
+8. Paramètres, manuel et outils
 ```
+
+Les sous-menus suivent la même logique dans le terminal et dans la GUI :
+
+- **Dashboard** : heure, fuseau, plateforme, historiques, rapports et météo facultative ;
+- **Opérations** : mission guidée et mode Watchdog ;
+- **Recon** : découverte, ports, profiler, aide et exposition ;
+- **Labs** : mots de passe, WPA2, HTTP, journaux, payloads et scripts ;
+- **Sans-fil** : Wi-Fi, Bluetooth, diagnostic et profil local ;
+- **Données** : historiques, missions, rapports, comparaison et suppression ;
+- **Outils** : système, hash, DNS, TLS, permissions et configuration.
 
 ## Interface graphique
 
 Le menu principal propose une interface web locale responsive inspirée des
-consoles de surveillance technologique. Elle utilise une identité originale :
-aucun logo, nom ou élément graphique du jeu Watch Dogs n'est intégré.
+consoles de surveillance technologique. Le thème combine une vue d'applications
+sur téléphone et une console tactique sur PC, avec noir, gris, magenta et vert.
+Il utilise une identité originale : aucun logo ou ressource des jeux de
+référence n'est intégré.
 
 Sous Windows :
 
@@ -66,10 +72,16 @@ sh run.sh gui
 sh gui.sh
 ```
 
-La page `http://127.0.0.1:8765` s'ouvre dans le navigateur. Elle contient le
-tableau de bord, le profil technique d'un appareil autorisé, l'audit HTTP, le
-laboratoire local, le module Wi-Fi/Bluetooth, les rapports et les paramètres.
-Les conditions d'utilisation doivent être acceptées avant d'accéder aux modules.
+La page `http://127.0.0.1:8765` s'ouvre dans le navigateur. Elle regroupe les
+modules par usage : opérations guidées, reconnaissance, profiler, laboratoires,
+Wi-Fi/Bluetooth, exposition locale, carte tactique, données, outils, contexte et
+réglages. Les conditions d'utilisation doivent être acceptées avant d'accéder
+aux modules.
+
+Les outils système, hash, DNS, TLS, configuration, permissions, journaux,
+scripts, payloads factices, mots de passe et Base64 sont utilisables dans la
+GUI. Pour protéger la machine qui héberge l'interface, les analyses de fichiers
+du GUI sont limitées au dossier de la toolbox.
 
 Sur Termux, si le navigateur ne s'ouvre pas automatiquement :
 
@@ -89,6 +101,41 @@ L'option `--lan` expose volontairement la console sur le réseau local. Elle
 doit uniquement être utilisée sur un réseau de confiance, puis arrêtée avec
 `Ctrl+C` après la démonstration. Sans cette option, le serveur écoute uniquement
 sur l'appareil qui l'a lancé.
+
+### Dashboard et contexte
+
+Le terminal et la GUI affichent l'heure locale, la date, le fuseau horaire et
+la plateforme. La météo est facultative : elle n'est chargée qu'après saisie de
+coordonnées ou autorisation de la géolocalisation dans le navigateur.
+
+La météo utilise l'API Open-Meteo. Les coordonnées servent uniquement à la
+requête demandée et ne sont pas enregistrées par la toolbox.
+
+La géolocalisation est demandée par le navigateur et reste facultative. Sur un
+téléphone, elle peut nécessiter l'autorisation Android correspondante.
+
+### Carte tactique
+
+La GUI génère une carte réseau SVG à partir des scans de ports conservés :
+
+- la toolbox est placée au centre ;
+- chaque actif autorisé devient un nœud ;
+- le nombre de services observés est affiché ;
+- une bordure orange signale un service à vérifier.
+
+Cette carte est schématique, comme une vue tactique. Elle n'affiche pas la
+position physique d'une personne ou d'un appareil.
+
+### Vue type Shodan
+
+La page **Exposition locale** offre une expérience proche d'un moteur
+d'exposition : actifs, services, dernières observations et points d'attention.
+Elle n'interroge pas Shodan et ne scanne pas Internet. Elle indexe uniquement
+les résultats privés et autorisés déjà conservés dans `historique/`.
+
+Ce choix permet une démonstration proche du principe de Shodan sans transformer
+la toolbox en moteur de reconnaissance Internet : on observe sa propre surface,
+on retrouve les services connus et on suit leur évolution dans le temps.
 
 ## Fonctionnalités
 

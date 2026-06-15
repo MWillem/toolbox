@@ -53,8 +53,9 @@ from cybertoolbox.watchdog import (
     answer_matches,
     contains_expected_indicators,
 )
-from cybertoolbox.webapp import render_layout
+from cybertoolbox.webapp import _workspace_path, render_layout, render_topology
 from cybertoolbox.cli import print_menu_item, responsive_banner
+from cybertoolbox.context_info import local_context
 
 
 class SafetyTests(unittest.TestCase):
@@ -92,6 +93,19 @@ class SafetyTests(unittest.TestCase):
                 print_menu_item("1", "Premier")
                 print_menu_item("10", "Dixième")
         self.assertEqual(output.getvalue().splitlines(), [" 1. Premier", "10. Dixième"])
+
+    def test_dashboard_context_and_topology_render(self):
+        context = local_context()
+        self.assertIn("timezone", context)
+        self.assertIn("time", context)
+        topology = render_topology()
+        self.assertIn("<svg", topology)
+        self.assertIn("TOOLBOX", topology)
+
+    def test_gui_file_analysis_stays_inside_workspace(self):
+        self.assertEqual(_workspace_path("README.md").name, "README.md")
+        with self.assertRaises(ValueError):
+            _workspace_path(str(Path.home().parent))
 
 
 class LabTests(unittest.TestCase):

@@ -10,9 +10,22 @@ from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
 import webbrowser
 
+from .context_info import local_context, weather_for_coordinates
 from .device_profile import build_device_profile
+from .exposure import exposure_inventory
+from .history import list_history, save_history
+from .labs.crypto_basics import base64_decode, base64_encode
+from .labs.file_audit import audit_local_configuration, audit_path
 from .labs.http_headers import analyze_headers, fetch_headers
 from .labs.local_lab import prepare_lab
+from .labs.log_analysis import analyze_log
+from .labs.network import discover_hosts, scan_ports
+from .labs.hashing import hash_text
+from .labs.network_info import dns_lookup, inspect_tls
+from .labs.passwords import analyze_password
+from .labs.payloads import analyze_payload_file
+from .labs.script_analysis import analyze_script
+from .labs.system_audit import audit_system
 from .labs.cracking import crack_wpa2_demo, derive_wpa2_pmk
 from .labs.wireless import (
     bluetooth_inventory,
@@ -27,14 +40,14 @@ from .settings import Settings, load_settings, save_settings, settings_summary
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 CSS = """
-:root{color-scheme:dark;--bg:#050807;--panel:rgba(8,18,15,.93);
---line:rgba(77,255,168,.25);--signal:#4dffa8;--accent:#c8ff4d;
---text:#e6fff2;--muted:#83a895;--danger:#ff5c72}
+:root{color-scheme:dark;--bg:#050506;--panel:rgba(13,13,15,.94);
+--line:rgba(255,255,255,.18);--signal:#d600a9;--accent:#51d414;
+--text:#f2f2f2;--muted:#9b9b9f;--danger:#ff4d59;--orange:#ff9d00}
 *{box-sizing:border-box}html{background:var(--bg)}body{min-height:100vh;margin:0;
 color:var(--text);font:15px/1.55 "Cascadia Code","JetBrains Mono",Consolas,monospace;
-background:linear-gradient(rgba(77,255,168,.025) 1px,transparent 1px),
-linear-gradient(90deg,rgba(77,255,168,.025) 1px,transparent 1px),
-radial-gradient(circle at 85% 10%,rgba(77,255,168,.1),transparent 30%),#050807;
+background:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
+linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px),
+radial-gradient(circle at 85% 10%,rgba(214,0,169,.16),transparent 30%),#050506;
 background-size:28px 28px,28px 28px,auto,auto}body:after{content:"";position:fixed;
 inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,transparent 0 3px,
 rgba(255,255,255,.012) 4px)}a{color:var(--signal);text-decoration:none}
@@ -48,7 +61,7 @@ color:var(--signal);font-size:18px}.brand small,.muted,.eyebrow{color:var(--mute
 box-shadow:0 0 12px var(--signal);animation:pulse 1.8s infinite}
 @keyframes pulse{50%{opacity:.35}}nav{display:grid;gap:6px}nav a{padding:10px 12px;
 color:var(--muted);border-left:2px solid transparent}nav a:hover{color:var(--text);
-border-color:var(--signal);background:rgba(77,255,168,.06)}main{min-width:0;
+border-color:var(--signal);background:rgba(214,0,169,.1)}main{min-width:0;
 padding:30px clamp(18px,4vw,54px) 60px}.topline{display:flex;justify-content:
 space-between;gap:16px;align-items:baseline;border-bottom:1px solid var(--line);
 margin-bottom:28px}h1{margin:0 0 12px;font-size:clamp(24px,4vw,42px);
@@ -57,10 +70,21 @@ var(--signal);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
 .eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:11px}.grid{display:
 grid;grid-template-columns:repeat(12,1fr);gap:16px}.card{grid-column:span 4;
 position:relative;overflow:hidden;padding:20px;border:1px solid var(--line);
-background:var(--panel);box-shadow:0 0 30px rgba(40,255,145,.08)}.card:before{
+background:var(--panel);box-shadow:0 0 30px rgba(214,0,169,.08)}.card:before{
 content:"";position:absolute;width:70px;height:2px;right:0;top:0;background:
 var(--signal);box-shadow:0 0 12px var(--signal)}.card.wide{grid-column:span 8}
 .card.full{grid-column:1/-1}.metric{color:var(--accent);font-size:30px;font-weight:700}
+.app-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.app{min-height:120px;padding:16px;border:1px solid var(--line);background:#101012;
+display:flex;flex-direction:column;justify-content:space-between}.app strong{color:var(--text)}
+.app span{color:var(--muted);font-size:12px}.app:hover{border-color:var(--signal);
+box-shadow:0 0 22px rgba(214,0,169,.16)}.group-label{margin:22px 0 8px;color:var(--signal);
+letter-spacing:.12em;font-size:11px;text-transform:uppercase}.context-bar{display:flex;
+gap:18px;flex-wrap:wrap;padding:10px 14px;background:#d0d0d0;color:#111;font-weight:700}
+.map{width:100%;min-height:430px;border:1px solid var(--line);background:#09090b}
+.node{fill:#18181c;stroke:var(--accent);stroke-width:2}.node-risk{stroke:var(--orange)}
+.edge{stroke:#5c5c62;stroke-width:1}.map-label{fill:#eee;font-size:12px}
+.badge{display:inline-block;padding:3px 7px;border:1px solid var(--line);font-size:11px}
 .button,button{display:inline-block;border:1px solid var(--signal);padding:10px 15px;
 color:#03100a;background:var(--signal);font:inherit;font-weight:700;cursor:pointer;
 clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)}
@@ -83,7 +107,9 @@ height:auto;border-right:0;border-bottom:1px solid var(--line)}.brand{margin-bot
 nav{display:flex;overflow-x:auto}nav a{white-space:nowrap;border-left:0;
 border-bottom:2px solid transparent}.card,.card.wide{grid-column:span 6}}
 @media(max-width:600px){main{padding:22px 14px 40px}.card,.card.wide,.card.full{
-grid-column:1/-1}.topline{display:block}table{display:block;overflow-x:auto}}
+grid-column:1/-1}.topline{display:block}table{display:block;overflow-x:auto}
+.sidebar{padding:10px}.brand{display:none}.app-grid{grid-template-columns:repeat(2,1fr)}
+.app{min-height:105px}.context-bar{position:sticky;top:0;z-index:4;font-size:12px}}
 """
 
 
@@ -113,6 +139,62 @@ def _checked(data: dict[str, list[str]], name: str) -> bool:
     return _field(data, name) in {"1", "on", "true", "yes"}
 
 
+def _workspace_path(value: str) -> Path:
+    if not value:
+        raise ValueError("Indiquez un chemin relatif au dossier du projet.")
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    candidate = candidate.resolve()
+    if not candidate.is_relative_to(PROJECT_ROOT.resolve()):
+        raise ValueError("Le GUI limite l'analyse aux fichiers du dossier du projet.")
+    if not candidate.exists():
+        raise ValueError("Ce fichier ou dossier n'existe pas.")
+    return candidate
+
+
+def render_topology() -> str:
+    inventory = exposure_inventory()
+    assets = list(inventory["assets"].items())
+    width, height = 900, 460
+    center_x, center_y = width // 2, height // 2
+    elements = [
+        f'<svg class="map" viewBox="0 0 {width} {height}" role="img" '
+        'aria-label="Carte tactique des actifs autorisés">',
+        f'<circle class="node" cx="{center_x}" cy="{center_y}" r="48"/>',
+        f'<text class="map-label" x="{center_x}" y="{center_y}" text-anchor="middle">TOOLBOX</text>',
+    ]
+    count = max(1, len(assets))
+    import math
+
+    for index, (address, asset) in enumerate(assets):
+        angle = (2 * math.pi * index / count) - math.pi / 2
+        x = center_x + math.cos(angle) * 300
+        y = center_y + math.sin(angle) * 170
+        risk = bool(asset["findings"])
+        elements.append(
+            f'<line class="edge" x1="{center_x}" y1="{center_y}" x2="{x:.0f}" y2="{y:.0f}"/>'
+        )
+        elements.append(
+            f'<circle class="node{" node-risk" if risk else ""}" cx="{x:.0f}" cy="{y:.0f}" r="38"/>'
+        )
+        elements.append(
+            f'<text class="map-label" x="{x:.0f}" y="{y - 48:.0f}" text-anchor="middle">'
+            f'{escape(address)}</text>'
+        )
+        elements.append(
+            f'<text class="map-label" x="{x:.0f}" y="{y + 4:.0f}" text-anchor="middle">'
+            f'{len(asset["services"])} svc</text>'
+        )
+    if not assets:
+        elements.append(
+            '<text class="map-label" x="450" y="315" text-anchor="middle">'
+            "Aucun scan enregistré</text>"
+        )
+    elements.append("</svg>")
+    return "".join(elements)
+
+
 class WebState:
     def __init__(self) -> None:
         self.token = secrets.token_urlsafe(32)
@@ -132,10 +214,12 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
             f"<title>{escape(title)}</title><style>{CSS}</style></head>"
             f'<body><main class="hero">{body}</main></body></html>'
         )
-    nav = """<nav><a href="/">Tableau de bord</a><a href="/profile">Profil appareil</a>
-<a href="/headers">Audit HTTP</a><a href="/lab">Laboratoire</a>
-<a href="/wireless">Sans-fil</a><a href="/reports">Rapports</a>
-<a href="/settings">Paramètres</a></nav>"""
+    nav = """<nav><a href="/">Dashboard</a><a href="/operations">Opérations</a>
+<a href="/recon">Recon</a>
+<a href="/profile">Profiler</a><a href="/lab">Labs</a><a href="/wireless">Sans-fil</a>
+<a href="/exposure">Exposition</a><a href="/map">Carte</a><a href="/reports">Données</a>
+<a href="/tools">Outils</a><a href="/context">Contexte</a><a href="/settings">Réglages</a></nav>"""
+    context = local_context()
     return f"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(title)}</title><style>{CSS}</style></head><body><div class="shell">
@@ -143,7 +227,15 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
 <small>LOCAL OPERATIONS CONSOLE</small><div class="status"><span class="pulse"></span>
 SESSION LOCALE ACTIVE</div></div>{nav}</aside><main><div class="topline"><div>
 <span class="eyebrow">Interface sécurisée</span><h1>{escape(title)}</h1></div>
-<span class="muted">LOCAL // AUTHORIZED</span></div>{body}</main></div></body></html>"""
+<span class="muted">LOCAL // AUTHORIZED</span></div>
+<div class="context-bar"><span id="live-clock">{escape(context['time'])}</span>
+<span>{escape(context['timezone'])}</span><span>{escape(context['platform'])}</span></div>
+{body}</main></div><script>
+setInterval(()=>{{const e=document.getElementById('live-clock');if(e)e.textContent=new Date().toLocaleTimeString();}},1000);
+function locate(){{if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(p=>{{
+document.querySelector('[name=latitude]').value=p.coords.latitude.toFixed(5);
+document.querySelector('[name=longitude]').value=p.coords.longitude.toFixed(5);}});}}
+</script></body></html>"""
 
 
 class ToolboxHandler(BaseHTTPRequestHandler):
@@ -160,10 +252,16 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             return
         handlers = {
             "/": self._home,
+            "/operations": self._operations,
             "/profile": self._profile,
+            "/recon": self._recon,
             "/headers": self._headers,
             "/lab": self._lab,
             "/wireless": self._wireless,
+            "/exposure": self._exposure,
+            "/map": self._map,
+            "/context": self._context,
+            "/tools": self._tools,
             "/reports": self._reports,
             "/report": lambda: self._report(route.query),
             "/settings": self._settings,
@@ -183,9 +281,12 @@ class ToolboxHandler(BaseHTTPRequestHandler):
         handlers = {
             "/accept": lambda: self._accept(data),
             "/profile": lambda: self._run_profile(data),
+            "/recon": lambda: self._run_recon(data),
             "/headers": lambda: self._run_headers(data),
             "/lab": self._prepare_lab,
             "/wireless": lambda: self._run_wireless(data),
+            "/context": lambda: self._run_context(data),
+            "/tools": lambda: self._run_tools(data),
             "/settings": lambda: self._save_settings(data),
         }
         handler = handlers.get(urlparse(self.path).path)
@@ -217,22 +318,29 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
             self._send(render_layout("Autorisation", body, accepted=False))
             return
         settings = load_settings()
+        exposure = exposure_inventory()
+        history_count = len(list_history())
         body = f"""<div class="grid"><section class="card wide">
-<span class="eyebrow">Système opérationnel</span><h2>Console d'apprentissage</h2>
-<p>Explorez une chaîne d'audit depuis un navigateur. Les commandes terminal
-restent disponibles et les mêmes limites de sécurité sont appliquées.</p>
-<a class="button" href="/profile">NOUVEAU PROFIL</a></section>
-<section class="card"><span class="eyebrow">Archives</span>
-<div class="metric">{len(list_reports()):02d}</div><p>rapports disponibles</p></section>
-<section class="card"><h2>Profil appareil</h2><p>IP, MAC visible, services,
-type probable et confiance.</p><a href="/profile">OUVRIR &gt;</a></section>
-<section class="card"><h2>Audit HTTP</h2><p>Contrôle passif des en-têtes de
-sécurité.</p><a href="/headers">OUVRIR &gt;</a></section>
-<section class="card"><h2>Lab local</h2><p>Journaux suspects, payload factice
-et script risqué.</p><a href="/lab">OUVRIR &gt;</a></section>
-<section class="card"><h2>Wi-Fi et Bluetooth</h2><p>Scan visible, diagnostic,
-profil local et lab WPA2 hors ligne.</p><a href="/wireless">OUVRIR &gt;</a></section>
-<section class="card full"><h2>Configuration active</h2>
+<span class="eyebrow">Main operation</span><h2>Cyber Learning Console</h2>
+<p>Une interface commune au téléphone et au PC : opérations, reconnaissance,
+laboratoires, données et restitution.</p><a class="button" href="/recon">LANCER UNE RECON</a>
+</section><section class="card"><span class="eyebrow">Réseau local</span>
+<div class="metric">{exposure['asset_count']:02d}</div><p>actifs indexés</p>
+<span class="badge">{exposure['service_count']} services</span></section>
+<section class="card full"><div class="group-label">Applications</div>
+<div class="app-grid">
+<a class="app" href="/operations"><strong>Operations</strong><span>Parcours guidés</span></a>
+<a class="app" href="/recon"><strong>Recon</strong><span>Découverte et ports</span></a>
+<a class="app" href="/profile"><strong>Profiler</strong><span>Actifs et confiance</span></a>
+<a class="app" href="/lab"><strong>Labs</strong><span>Journaux, HTTP, secrets</span></a>
+<a class="app" href="/wireless"><strong>Sans-fil</strong><span>Wi-Fi, Bluetooth, WPA2</span></a>
+<a class="app" href="/exposure"><strong>Exposure</strong><span>Vue locale type Shodan</span></a>
+<a class="app" href="/map"><strong>Tactical Map</strong><span>Topologie des actifs</span></a>
+<a class="app" href="/reports"><strong>Archives</strong>
+<span>{history_count} historiques / {len(list_reports())} rapports</span></a>
+<a class="app" href="/tools"><strong>Tools</strong><span>Système, hash, DNS, TLS</span></a>
+<a class="app" href="/context"><strong>Context</strong><span>Heure, fuseau, météo</span></a>
+</div></section><section class="card full"><h2>Configuration active</h2>
 {_value(dict(settings_summary(settings)))}</section></div>"""
         self._send(render_layout("Tableau de bord", body))
 
@@ -240,6 +348,89 @@ profil local et lab WPA2 hors ligne.</p><a href="/wireless">OUVRIR &gt;</a></sec
         if _checked(data, "accepted"):
             self.state.accepted = True
         self._redirect("/")
+
+    def _operations(self) -> None:
+        body = """<div class="grid"><section class="card wide">
+<span class="eyebrow">Guided operations</span><h2>Choisir un parcours</h2>
+<p>Les opérations relient plusieurs modules dans un ordre compréhensible.
+Chaque étape explique l'objectif, la preuve obtenue et la suite logique.</p>
+<div class="app-grid">
+<a class="app" href="/lab"><strong>Signal fantôme</strong>
+<span>Journaux, payload factice et script risqué</span></a>
+<a class="app" href="/recon"><strong>Mission réseau</strong>
+<span>Découverte, cible, ports et conservation</span></a>
+<a class="app" href="/profile"><strong>Profil autorisé</strong>
+<span>Nom, type probable, services et confiance</span></a>
+</div></section><section class="card"><h2>Mode d'emploi</h2>
+<ol><li>Définir le périmètre autorisé.</li><li>Collecter une preuve.</li>
+<li>Interpréter sans surévaluer le résultat.</li><li>Conserver ou produire un rapport.</li></ol>
+<p class="muted">Le scénario Watchdog interactif complet reste aussi disponible
+dans le terminal avec <code>run.bat watchdog</code>.</p></section></div>"""
+        self._send(render_layout("Opérations guidées", body))
+
+    def _recon(self) -> None:
+        settings = load_settings()
+        body = f"""<div class="grid"><section class="card wide"><h2>Recon autorisée</h2>
+<p class="muted">Découverte d'un réseau privé ou scan des ports d'une cible.
+Les résultats conservés alimentent la carte et l'index d'exposition local.</p>
+<form method="post" action="/recon">{self._token()}
+<label>Action<select name="action"><option value="discover">Découvrir les hôtes</option>
+<option value="scan">Scanner les ports</option></select></label>
+<label>Réseau ou cible<input name="subject" placeholder="192.168.1.0/24 ou 192.168.1.25" required></label>
+<label>Ports<input name="ports" value="{escape(settings.default_ports)}"></label>
+<label class="check"><input type="checkbox" name="authorized" required>
+Je confirme disposer de l'autorisation sur ce périmètre.</label>
+<label class="check"><input type="checkbox" name="keep" checked>
+Conserver dans l'historique local.</label>
+<button type="submit">EXÉCUTER LA RECON</button></form></section>
+<section class="card"><h2>Parcours</h2><ul class="clean"><li>Découvrir</li>
+<li>Sélectionner un actif</li><li>Scanner ses ports</li>
+<li>Profiler et interpréter</li></ul>
+<a href="/headers">Ouvrir l'audit HTTP passif</a></section>
+{self._result("/recon")}</div>"""
+        self._send(render_layout("Reconnaissance", body))
+
+    def _run_recon(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            if not _checked(data, "authorized"):
+                raise ValueError("L'autorisation explicite est obligatoire.")
+            settings = load_settings()
+            action = _field(data, "action")
+            subject = _field(data, "subject")
+            ports = ""
+            if action == "discover":
+                results, engine = discover_hosts(subject, settings.prefer_nmap)
+                kind = "discovery"
+            elif action == "scan":
+                from .safety import parse_ports
+
+                ports = _field(data, "ports", settings.default_ports)
+                results, engine = scan_ports(
+                    subject,
+                    parse_ports(ports),
+                    settings.scan_timeout,
+                    settings.prefer_nmap,
+                )
+                kind = "port_scan"
+            else:
+                raise ValueError("Action de reconnaissance inconnue.")
+            result: dict[str, Any] = {
+                "action": action,
+                "subject": subject,
+                "engine": engine,
+                "results": results,
+            }
+            if _checked(data, "keep"):
+                result["history"] = str(
+                    save_history(kind, subject, engine, results, ports=ports)
+                )
+            self.state.result_title = "Résultat de reconnaissance"
+            self.state.result_route = "/recon"
+            self.state.result = result
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/recon")
 
     def _profile(self) -> None:
         settings = load_settings()
@@ -357,6 +548,109 @@ exécuté. Tout reste dans <code>lab_workspace</code>.</p></section>
             "Rapports",
             f"<section class='card full'><h2>Archives Markdown</h2><ul class='clean'>{items}</ul></section>",
         ))
+
+    def _exposure(self) -> None:
+        inventory = exposure_inventory()
+        body = f"""<div class="grid"><section class="card full">
+<span class="eyebrow">Local exposure index</span><h2>Vue type Shodan</h2>
+<div class="notice">Aucune recherche Internet : cette page indexe uniquement les
+scans privés explicitement autorisés et conservés localement.</div>
+{_value(inventory)}</section></div>"""
+        self._send(render_layout("Exposition locale", body))
+
+    def _map(self) -> None:
+        body = f"""<div class="grid"><section class="card full">
+<span class="eyebrow">Tactical network view</span><h2>Carte des actifs</h2>
+{render_topology()}<p class="muted">Vert : actif observé. Orange : service à
+vérifier. Les positions sont schématiques et ne représentent pas une adresse
+géographique.</p></section></div>"""
+        self._send(render_layout("Carte tactique", body))
+
+    def _context(self) -> None:
+        body = f"""<div class="grid"><section class="card wide"><h2>Contexte local</h2>
+{_value(local_context())}<p class="muted">L'heure et le fuseau sont lus localement.
+La météo nécessite des coordonnées consenties et une connexion Internet.</p></section>
+<section class="card"><h2>Météo</h2><form method="post" action="/context">
+{self._token()}<label>Latitude<input name="latitude" type="number" step="any" required></label>
+<label>Longitude<input name="longitude" type="number" step="any" required></label>
+<button type="button" onclick="locate()">UTILISER MA POSITION</button>
+<button type="submit">CHARGER LA MÉTÉO</button></form></section>
+{self._result("/context")}</div>"""
+        self._send(render_layout("Heure, zone et météo", body))
+
+    def _run_context(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            self.state.result_title = "Météo actuelle"
+            self.state.result_route = "/context"
+            self.state.result = weather_for_coordinates(
+                float(_field(data, "latitude")),
+                float(_field(data, "longitude")),
+            )
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/context")
+
+    def _tools(self) -> None:
+        body = f"""<div class="grid"><section class="card wide"><h2>Outils techniques</h2>
+<form method="post" action="/tools">{self._token()}
+<label>Action<select name="action"><option value="system">Audit du système local</option>
+<option value="hash">Hash SHA-256 d'un texte</option><option value="dns">Résolution DNS</option>
+<option value="tls">Inspection TLS</option><option value="config">Configuration locale</option>
+<option value="permissions">Permissions d'un chemin</option>
+<option value="log">Analyser un journal</option>
+<option value="script">Analyser un script</option>
+<option value="payload">Analyser un payload factice</option>
+<option value="password">Évaluer un mot de passe local</option>
+<option value="b64encode">Encoder en Base64</option>
+<option value="b64decode">Décoder du Base64</option></select></label>
+<label>Valeur ou chemin<input name="value"
+placeholder="Texte, domaine ou chemin relatif, ex. lab_workspace/suspicious.log"></label>
+<button type="submit">EXÉCUTER</button></form></section>
+<section class="card"><h2>Limite des fichiers</h2><p class="muted">
+Pour protéger l'appareil, le GUI analyse uniquement les fichiers présents dans
+le dossier de la toolbox. Les chemins absolus extérieurs sont refusés.</p>
+<a href="/lab">Préparer les artefacts du laboratoire</a></section>
+{self._result("/tools")}</div>"""
+        self._send(render_layout("Outils", body))
+
+    def _run_tools(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            action = _field(data, "action")
+            value = _field(data, "value")
+            if action == "system":
+                result: Any = dict(audit_system())
+            elif action == "hash":
+                result = {"algorithm": "sha256", "digest": hash_text(value)}
+            elif action == "dns":
+                result = dns_lookup(value)
+            elif action == "tls":
+                result = inspect_tls(value)
+            elif action == "config":
+                result = audit_local_configuration()
+            elif action == "permissions":
+                result = audit_path(_workspace_path(value))
+            elif action == "log":
+                result = analyze_log(_workspace_path(value))
+            elif action == "script":
+                result = analyze_script(_workspace_path(value))
+            elif action == "payload":
+                result = analyze_payload_file(_workspace_path(value))
+            elif action == "password":
+                result = analyze_password(value)
+            elif action == "b64encode":
+                result = {"encoded": base64_encode(value)}
+            elif action == "b64decode":
+                result = {"decoded": base64_decode(value)}
+            else:
+                raise ValueError("Outil inconnu.")
+            self.state.result_title = "Résultat technique"
+            self.state.result_route = "/tools"
+            self.state.result = result
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/tools")
 
     def _wireless(self) -> None:
         body = f"""<div class="grid"><section class="card wide">
@@ -494,7 +788,10 @@ name="scan_timeout" value="{settings.scan_timeout}"></label>
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'unsafe-inline'")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+        )
         self.end_headers()
         self.wfile.write(payload)
 

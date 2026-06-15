@@ -11,7 +11,9 @@ import sys
 import textwrap
 
 from . import __version__
+from .context_info import local_context, weather_for_coordinates
 from .device_profile import DeviceProfile, build_device_profile
+from .exposure import exposure_inventory
 from .guide import format_guide, full_manual
 from .history import (
     compare_port_scans,
@@ -91,7 +93,7 @@ BANNER = r"""
    | || |_| | |_| | |___| |_) | |_| /  \
    |_| \___/ \___/|_____|____/ \___/_/\_\
 
-       CYBER LEARNING TOOLBOX 2.8
+       CYBER LEARNING TOOLBOX 2.9
 """
 
 TITLES = {
@@ -152,7 +154,7 @@ ou suivre une personne.
 
 COMPACT_BANNER = """
 ╔══════════════════════════════╗
-║  CYBER LEARNING TOOLBOX 2.8  ║
+║  CYBER LEARNING TOOLBOX 2.9  ║
 ╚══════════════════════════════╝
 """
 
@@ -241,6 +243,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("settings", help="Afficher ou modifier les paramètres")
     sub.add_parser("overview", help="Afficher toutes les capacités de l'application")
+    sub.add_parser("dashboard", help="Afficher le tableau de bord local")
+    sub.add_parser("exposure", help="Afficher l'inventaire d'exposition local")
 
     lab_prepare = sub.add_parser("lab-prepare", help="Créer les artefacts du laboratoire local")
     lab_prepare.add_argument("--directory", type=Path, default=Path("lab_workspace"))
@@ -335,6 +339,10 @@ def run_command(args: argparse.Namespace) -> int:
         manage_settings()
     elif args.command == "overview":
         show_overview()
+    elif args.command == "dashboard":
+        show_dashboard()
+    elif args.command == "exposure":
+        show_exposure_inventory()
     elif args.command == "lab-prepare":
         run_lab_prepare(args.directory)
     elif args.command == "lab-serve":
@@ -1126,20 +1134,14 @@ def interactive_menu() -> int:
         return 1
 
     actions = {
-        "1": (translate(SETTINGS.language, "menu_watchdog"), run_watchdog_menu),
-        "2": (translate(SETTINGS.language, "menu_mission"), run_mission),
-        "3": (translate(SETTINGS.language, "menu_mapping"), _interactive_mapping),
-        "4": (translate(SETTINGS.language, "menu_scan"), _interactive_scan),
-        "5": (translate(SETTINGS.language, "menu_lab"), _interactive_local_lab),
-        "6": (translate(SETTINGS.language, "menu_password"), _interactive_password_lab),
-        "7": (translate(SETTINGS.language, "menu_reports"), manage_reports),
-        "8": (translate(SETTINGS.language, "menu_manual"), lambda: print(full_manual())),
-        "9": (translate(SETTINGS.language, "menu_tools"), _extra_tools),
-        "10": (translate(SETTINGS.language, "menu_settings"), manage_settings),
-        "11": (translate(SETTINGS.language, "menu_overview"), show_overview),
-        "12": ("Interface graphique responsive", _interactive_gui),
-        "13": ("Données enregistrées", manage_stored_data),
-        "14": ("Wi-Fi et Bluetooth pédagogiques", run_wireless_menu),
+        "1": ("Tableau de bord", show_dashboard),
+        "2": ("Opérations guidées", operations_menu),
+        "3": ("Reconnaissance et profils", reconnaissance_menu),
+        "4": ("Laboratoires pédagogiques", laboratories_menu),
+        "5": ("Wi-Fi et Bluetooth", run_wireless_menu),
+        "6": ("Données, rapports et exposition", data_menu),
+        "7": ("Interface graphique", _interactive_gui),
+        "8": ("Paramètres, manuel et outils", settings_help_menu),
     }
     while True:
         clear_screen()
@@ -1172,6 +1174,158 @@ def _interactive_gui() -> None:
         serve_gui()
     except KeyboardInterrupt:
         print("\nInterface graphique arrêtée.")
+
+
+def operations_menu() -> None:
+    clear_screen()
+    print("\n=== OPÉRATIONS GUIDÉES ===")
+    print_menu_item("1", "Mode Watchdog et profils")
+    print_menu_item("2", "Mission guidée complète")
+    print_menu_item("0", "Retour")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        run_watchdog_menu()
+    elif choice == "2":
+        run_mission()
+
+
+def reconnaissance_menu() -> None:
+    clear_screen()
+    print("\n=== RECONNAISSANCE ET PROFILS ===")
+    print_menu_item("1", "Découvrir les hôtes d'un réseau privé")
+    print_menu_item("2", "Scanner les ports d'une cible autorisée")
+    print_menu_item("3", "Profiler un appareil autorisé")
+    print_menu_item("4", "Profiler passivement un domaine public")
+    print_menu_item("5", "Inventaire d'exposition local, style Shodan")
+    print_menu_item("6", "Aide des ports connus")
+    print_menu_item("0", "Retour")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        _interactive_mapping()
+    elif choice == "2":
+        _interactive_scan()
+    elif choice == "3":
+        target = input("IP ou nom local : ").strip()
+        ports = input(f"Ports [{SETTINGS.default_ports}] : ").strip() or SETTINGS.default_ports
+        if _authorized():
+            run_device_profile(target, ports)
+    elif choice == "4":
+        run_public_asset_profile(input("Nom de domaine : ").strip())
+    elif choice == "5":
+        show_exposure_inventory()
+    elif choice == "6":
+        show_port_guide()
+
+
+def laboratories_menu() -> None:
+    clear_screen()
+    print("\n=== LABORATOIRES PÉDAGOGIQUES ===")
+    print_menu_item("1", "Laboratoire local : journaux, payload et script")
+    print_menu_item("2", "Résistance des mots de passe et WPA2")
+    print_menu_item("3", "Encodage, hachage et chiffrement pédagogique")
+    print_menu_item("4", "Serveur HTTP local volontairement incomplet")
+    print_menu_item("0", "Retour")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        _interactive_local_lab()
+    elif choice == "2":
+        _interactive_password_lab()
+    elif choice == "3":
+        _interactive_encoding()
+    elif choice == "4":
+        try:
+            serve_lab(8088)
+        except KeyboardInterrupt:
+            print("\nServeur arrêté.")
+
+
+def data_menu() -> None:
+    clear_screen()
+    print("\n=== DONNÉES ET RESTITUTION ===")
+    print_menu_item("1", "Données enregistrées et historiques")
+    print_menu_item("2", "Gestion des rapports")
+    print_menu_item("3", "Inventaire d'exposition local")
+    print_menu_item("0", "Retour")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        manage_stored_data()
+    elif choice == "2":
+        manage_reports()
+    elif choice == "3":
+        show_exposure_inventory()
+
+
+def settings_help_menu() -> None:
+    clear_screen()
+    print("\n=== PARAMÈTRES ET AIDE ===")
+    print_menu_item("1", "Paramètres")
+    print_menu_item("2", "Manuel et parcours conseillé")
+    print_menu_item("3", "Vue globale des capacités")
+    print_menu_item("4", "Outils complémentaires")
+    print_menu_item("0", "Retour")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        manage_settings()
+    elif choice == "2":
+        print(full_manual())
+    elif choice == "3":
+        show_overview()
+    elif choice == "4":
+        _extra_tools()
+
+
+def show_dashboard() -> None:
+    clear_screen()
+    context = local_context()
+    exposure = exposure_inventory()
+    reports = list_reports()
+    histories = list_history()
+    print(responsive_banner(BANNER, COMPACT_BANNER))
+    print("STATUT LOCAL")
+    print(f"- Heure : {context['time']} | Date : {context['date']}")
+    print(f"- Fuseau : {context['timezone']} ({context['utc_offset']})")
+    print(f"- Plateforme : {context['platform']} | Langue : {SETTINGS.language}")
+    print(f"- Actifs suivis : {exposure['asset_count']}")
+    print(f"- Services observés : {exposure['service_count']}")
+    print(f"- Historiques : {len(histories)} | Rapports : {len(reports)}")
+    print("\nCONTEXTE FACULTATIF")
+    print_menu_item("1", "Afficher la météo avec des coordonnées consenties")
+    print_menu_item("0", "Retour")
+    if input("Choix : ").strip() == "1":
+        latitude = float(input("Latitude : ").strip())
+        longitude = float(input("Longitude : ").strip())
+        weather = weather_for_coordinates(latitude, longitude)
+        print(
+            f"{weather['description']} | {weather['temperature']}°C | "
+            f"ressenti {weather['apparent_temperature']}°C | "
+            f"vent {weather['wind_speed']} km/h"
+        )
+
+
+def show_exposure_inventory() -> None:
+    clear_screen()
+    inventory = exposure_inventory()
+    print("\n=== INVENTAIRE D'EXPOSITION LOCAL ===")
+    print(f"Périmètre : {inventory['scope']}")
+    print(f"Actifs : {inventory['asset_count']} | Services : {inventory['service_count']}")
+    if not inventory["assets"]:
+        print("Aucun scan de ports conservé. Enregistrez un scan pour alimenter cette vue.")
+        return
+    for address, asset in inventory["assets"].items():
+        print(f"\n[{address}] {asset['label']} | dernière observation {asset['last_seen']}")
+        for service in asset["services"]:
+            detail = " ".join(
+                str(service.get(key, "")).strip()
+                for key in ("service", "product", "version")
+                if str(service.get(key, "")).strip()
+            )
+            print(f"- {service['port']}/{service.get('protocol', 'tcp')} : {detail or 'inconnu'}")
+        for finding in asset["findings"]:
+            print(f"! [{finding['severity']}] {finding['port']}/tcp : {finding['message']}")
+    print(
+        "\nCette vue ressemble à un moteur d'exposition, mais elle n'interroge pas "
+        "Internet : elle indexe uniquement vos scans autorisés."
+    )
 
 
 def _interactive_mapping() -> None:
