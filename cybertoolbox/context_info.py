@@ -58,7 +58,7 @@ def weather_for_coordinates(latitude: float, longitude: float) -> dict[str, Any]
     )
     request = Request(
         f"https://api.open-meteo.com/v1/forecast?{query}",
-        headers={"User-Agent": "CyberToolbox/2.10"},
+        headers={"User-Agent": "CyberToolbox/2.13"},
     )
     try:
         with urlopen(request, timeout=8) as response:

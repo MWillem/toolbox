@@ -6,6 +6,18 @@ from unittest.mock import patch
 from pathlib import Path
 
 from cybertoolbox.labs.hashing import hash_file, hash_text
+from cybertoolbox.labs.hash_advanced import (
+    crack_hash as crack_advanced_hash,
+    hash_generate,
+    hash_ntlm,
+    identify_hash,
+)
+from cybertoolbox.labs.bluetooth_advanced import (
+    OUI_MANUFACTURERS,
+    lookup_manufacturer,
+)
+from cybertoolbox.labs.nfc_tools import clone_tag, parse_ndef_record
+from cybertoolbox.labs.qr_tools import decode_qr_wifi, generate_qr_text
 from cybertoolbox.labs.crypto_basics import (
     base64_decode,
     base64_encode,
@@ -29,6 +41,7 @@ from cybertoolbox.labs.wireless import (
     _parse_netsh_scan,
     _parse_nmcli_scan,
     _parse_termux_scan,
+    mobile_operator_info,
     wireless_diagnostics,
     wifi_scan,
     wifi_security_lesson,
@@ -57,8 +70,9 @@ from cybertoolbox.watchdog import (
     contains_expected_indicators,
 )
 from cybertoolbox.webapp import _value, _workspace_path, render_layout, render_topology
-from cybertoolbox.cli import print_menu_item, responsive_banner
+from cybertoolbox.cli import interactive_menu, print_menu_item, responsive_banner
 from cybertoolbox.context_info import local_context
+from cybertoolbox.enrich_profile import calculate_digital_shadow_score
 
 
 class SafetyTests(unittest.TestCase):
@@ -85,6 +99,10 @@ class SafetyTests(unittest.TestCase):
         self.assertIn('id="loading-overlay"', page)
         self.assertIn('id="menu-toggle"', page)
         self.assertIn('data-theme="', page)
+        self.assertIn("Maréchaux Willem", page)
+        self.assertIn("mapProviders", page)
+        self.assertIn("OpenTopoMap", page)
+        self.assertIn("await fetch", page)
 
     def test_structured_lists_use_one_aligned_table(self):
         rendered = _value(
@@ -103,6 +121,19 @@ class SafetyTests(unittest.TestCase):
             self.assertEqual(responsive_banner("large", "compact"), "compact")
         with patch("cybertoolbox.cli.terminal_width", return_value=100):
             self.assertEqual(responsive_banner("large", "compact"), "large")
+
+    def test_ctrl_c_can_return_to_the_main_menu(self):
+        answers = iter(["o", KeyboardInterrupt(), "n", "0"])
+
+        def answer(*_args):
+            value = next(answers)
+            if isinstance(value, BaseException):
+                raise value
+            return value
+
+        with patch("builtins.input", side_effect=answer):
+            with patch("cybertoolbox.cli.clear_screen"):
+                self.assertEqual(interactive_menu(), 0)
 
     def test_menu_numbers_are_aligned(self):
         output = io.StringIO()
@@ -132,6 +163,64 @@ class LabTests(unittest.TestCase):
             hash_text("abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
         )
+
+    def test_advanced_hash_generation_identification_and_cracking(self):
+        self.assertEqual(hash_generate("abc", "md5"), "900150983cd24fb0d6963f7d28e17f72")
+        self.assertEqual(hash_ntlm("password"), "8846f7eaee8fb117ad06bdd830b7586c")
+        identified = identify_hash("5d41402abc4b2a76b9719d911017c592")
+        self.assertEqual(
+            {item["algorithm"] for item in identified},
+            {"md5", "ntlm"},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            wordlist = Path(directory) / "words.txt"
+            wordlist.write_text("admin\nbonjour\nsecret\n", encoding="utf-8")
+            result = crack_advanced_hash(
+                hash_generate("bonjour", "sha256"),
+                str(wordlist),
+                "auto",
+            )
+        self.assertTrue(result["found"])
+        self.assertEqual(result["password"], "bonjour")
+
+    def test_qr_wifi_decoder_and_ascii_generator(self):
+        decoded = decode_qr_wifi("WIFI:T:WPA;S:Classe;P:secret;;")
+        self.assertEqual(decoded["ssid"], "Classe")
+        self.assertEqual(decoded["password"], "secret")
+        self.assertIn("██", generate_qr_text("CyberToolbox"))
+
+    def test_ndef_text_and_documentary_clone(self):
+        raw = bytes([0xD1, 0x01, 0x05]) + b"T" + bytes([0x02]) + b"frOK"
+        parsed = parse_ndef_record(raw)
+        self.assertEqual(parsed["kind"], "text")
+        self.assertEqual(parsed["value"], "OK")
+        with tempfile.TemporaryDirectory() as directory:
+            destination = Path(directory) / "tag.json"
+            self.assertTrue(clone_tag("01:02:03:04", parsed, str(destination)))
+            self.assertTrue(destination.exists())
+
+    def test_bluetooth_oui_table_and_lookup(self):
+        manufacturers = set(OUI_MANUFACTURERS.values())
+        self.assertGreaterEqual(len(manufacturers), 50)
+        self.assertEqual(lookup_manufacturer("00:00:0C:12:34:56"), "Cisco")
+        self.assertEqual(
+            lookup_manufacturer("12:34:56:78:9A:BC"),
+            "Fabricant inconnu",
+        )
+
+    def test_digital_shadow_score(self):
+        result = calculate_digital_shadow_score(
+            {
+                "services": [{"port": 22}] * 4,
+                "mac": "00:11:22:33:44:55",
+                "hostname": "lab",
+                "manufacturer": "Demo",
+                "found_sites": [{"site": "GitHub"}],
+                "location": {"country": "FR"},
+            }
+        )
+        self.assertEqual(result["score"], 70)
+        self.assertEqual(result["risk_level"], "high")
 
     def test_file_hash_matches_text_hash(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -238,6 +327,38 @@ class LabTests(unittest.TestCase):
         result = wireless_diagnostics()
         self.assertIn("platform", result)
         self.assertIn("wifi_scan_available", result)
+        self.assertIn("mobile_operator_available", result)
+
+    def test_mobile_operator_requires_the_local_termux_api(self):
+        with patch("cybertoolbox.labs.wireless.shutil.which", return_value=None):
+            result = mobile_operator_info()
+        self.assertFalse(result["available"])
+        self.assertEqual(result["scope"], "appareil courant uniquement")
+        self.assertEqual(result["operator"], {})
+
+    def test_mobile_operator_filters_sensitive_identifiers(self):
+        payload = (
+            '{"network_operator_name":"Orange F",'
+            '"network_operator":"20801","network_type":"LTE",'
+            '"sim_operator_name":"Orange","device_id":"private-imei",'
+            '"sim_serial_number":"private-iccid",'
+            '"sim_subscriber_id":"private-imsi"}'
+        )
+        with patch(
+            "cybertoolbox.labs.wireless.shutil.which",
+            return_value="/data/data/com.termux/files/usr/bin/termux-telephony-deviceinfo",
+        ):
+            with patch(
+                "cybertoolbox.labs.wireless._run",
+                return_value={"available": True, "output": payload, "error": ""},
+            ):
+                result = mobile_operator_info()
+        self.assertTrue(result["available"])
+        self.assertEqual(result["operator"]["network_operator_name"], "Orange F")
+        self.assertNotIn("device_id", repr(result))
+        self.assertNotIn("private-imei", repr(result))
+        self.assertNotIn("private-iccid", repr(result))
+        self.assertNotIn("private-imsi", repr(result))
 
     def test_wifi_security_lesson_flags_open_networks(self):
         self.assertTrue(any("ouvert" in item.lower() for item in wifi_security_lesson("OPEN")))

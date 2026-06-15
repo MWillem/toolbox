@@ -1,5 +1,10 @@
 # Cyber Learning Toolbox
 
+Projet original conçu et maintenu par **Maréchaux Willem**.
+Copyright © 2026 Maréchaux Willem. Distribué sous licence MIT : les copies et
+redistributions substantielles doivent conserver la notice de copyright et la
+licence. Voir [`LICENSE`](LICENSE) et [`NOTICE`](NOTICE).
+
 Une toolbox pédagogique issue d'un projet de Master. Elle reproduit le fil
 logique d'un audit de cybersécurité tout en expliquant chaque étape :
 
@@ -130,12 +135,19 @@ La page Carte possède deux onglets complémentaires :
 
 - **Carte géographique** : une carte OpenStreetMap interactive centrée sur des
   coordonnées saisies ou sur la position explicitement autorisée dans le
-  navigateur ;
+  navigateur, avec zoom et fonds standard, humanitaire, cyclable ou
+  topographique ;
 - **Topologie réseau** : une carte SVG construite à partir des scans de ports
   conservés.
 
 La position géographique n'est pas enregistrée. Les appareils découverts sur le
 réseau ne sont jamais placés automatiquement sur cette carte.
+
+OpenStreetMap ne fournit pas directement une vue satellite. La toolbox utilise
+des rendus basés sur les données OpenStreetMap : Standard, Humanitaire, CyclOSM
+et OpenTopoMap. Le fond topographique peut afficher le relief et les courbes de
+niveau selon les données disponibles. Une future vue satellite nécessiterait un
+fournisseur d'imagerie distinct, une clé éventuelle et ses propres conditions.
 
 Dans la topologie réseau :
 
@@ -285,6 +297,10 @@ format JSON. Ce dossier reste local et est ignoré par Git. Le menu
 La gestion des rapports permet également de renommer un fichier ou de supprimer
 tous les rapports et leurs exports HTML/JSON après confirmation explicite.
 
+Dans l'interface graphique, la page **Données** regroupe les onglets Rapports,
+Historiques, Missions et Nettoyage. Chaque élément peut être renommé ou supprimé,
+et l'effacement global demande une confirmation explicite.
+
 ### Lab mots de passe
 
 Deux exercices sont proposés :
@@ -428,6 +444,7 @@ Le menu **Wi-Fi et Bluetooth pédagogiques** propose :
 - SSID, BSSID, canal, fréquence, signal et sécurité annoncée lorsqu'ils sont disponibles ;
 - une explication des réseaux ouverts, WEP, WPA2 et WPA3 ;
 - les appareils Bluetooth connus ou visibles exposés par le système ;
+- l'opérateur mobile du téléphone Android qui exécute la toolbox ;
 - un diagnostic des outils, permissions et limites du matériel ;
 - un laboratoire WPA2 entièrement hors ligne.
 
@@ -435,7 +452,8 @@ Les moteurs utilisés sont :
 
 - Windows : `netsh` et `Get-PnpDevice` ;
 - Linux : `nmcli` et `bluetoothctl` ;
-- Termux : `termux-wifi-scaninfo` avec Termux:API.
+- Android avec Termux : `termux-wifi-scaninfo` et
+  `termux-telephony-deviceinfo` avec Termux:API.
 
 Elles ne capturent pas les paquets, ne forcent pas une association et ne
 permettent pas de suivre secrètement un appareil. Android peut limiter fortement
@@ -449,6 +467,7 @@ Installer l'application **Termux:API** depuis la même source que Termux, puis :
 pkg update
 pkg install termux-api
 termux-wifi-scaninfo
+termux-telephony-deviceinfo
 sh run.sh
 ```
 
@@ -459,6 +478,35 @@ réseaux Wi-Fi proches.
 
 Voir un réseau n'autorise pas à le tester. Pour une démonstration, sélectionner
 uniquement le point d'accès de laboratoire fourni et autorisé.
+
+### Opérateur Internet et opérateur mobile
+
+Le nom d'un point d'accès, son BSSID, son fabricant probable et certains noms
+réseau peuvent donner un **indice** sur le fournisseur d'accès Internet. Ce
+n'est pas une preuve : le SSID peut être modifié, le routeur remplacé ou utilisé
+derrière un autre opérateur.
+
+Sur Android, `termux-telephony-deviceinfo` permet d'afficher l'opérateur du
+réseau mobile et celui de la SIM du **téléphone qui exécute la toolbox**. La
+toolbox filtre les identifiants d'appareil, de SIM et d'abonné. Android peut
+demander l'autorisation Téléphone.
+
+Il n'est pas possible de déterminer de façon fiable l'opérateur mobile d'un
+téléphone tiers simplement parce qu'il apparaît sur un réseau Wi-Fi ou en
+Bluetooth. Le Wi-Fi et le réseau cellulaire sont deux interfaces distinctes.
+
+### Organisation des modules
+
+Plusieurs écrans utilisent les mêmes informations, mais n'ont pas le même rôle :
+
+- **Collecte** : découverte d'hôtes, ports, Wi-Fi et Bluetooth ;
+- **Orchestration** : Mission guidée et Watchdog enchaînent les collectes ;
+- **Enrichissement** : Profiler interprète noms, services, fabricant et type probable ;
+- **Restitution** : Carte, Exposition, Historique et Rapports présentent les données.
+
+Le principal chevauchement restant est le scan de ports relancé par le Profiler.
+Les autres répétitions correspondent surtout à des vues ou parcours différents
+sur une collecte commune.
 
 ### Laboratoire WPA2 hors ligne
 
@@ -496,6 +544,33 @@ Le mode Watchdog contient également un **profil technique de l'environnement**.
 Il décrit l'appareil qui exécute la toolbox, les réseaux Wi-Fi visibles et les
 appareils Bluetooth exposés. Sur Termux, le modèle et le fabricant du téléphone
 peuvent être lus localement avec `getprop`.
+
+## Modules QR, NFC, hash et profiler enrichi
+
+La version 2.13 ajoute cinq modules pédagogiques accessibles depuis les menus :
+
+- **QR Codes** : texte, accès Wi-Fi, vCard, lecture d'image et leçon phishing ;
+- **NFC** : scan Termux/libnfc, analyse NDEF, écriture d'URL si un outil
+  compatible est installé et sauvegarde documentaire d'un tag ;
+- **Hash enrichi** : MD5, SHA-1/2/3, BLAKE2b, NTLM, identification de format et
+  attaque par dictionnaire locale ;
+- **Bluetooth avancé** : découverte classique, BLE, fabricant OUI et profil
+  technique d'un appareil ;
+- **Profiler Watch Dogs** : recherche HEAD limitée d'un username public, profil
+  de l'environnement et score pédagogique d'ombre numérique.
+
+Les fonctions NFC et Bluetooth avancées dépendent du matériel, des pilotes, des
+permissions et des outils disponibles. L'absence d'un appareil dans un scan ne
+prouve pas son absence physique.
+
+La recherche d'un username vérifie uniquement les URL publiques explicitement
+prévues pour GitHub, Twitter/X, Instagram, Reddit et Twitch. Elle n'effectue pas
+de scraping, ne recherche pas d'email ou de téléphone et ne prouve pas
+l'identité du propriétaire d'un compte.
+
+Le « score d'ombre numérique » représente la quantité d'informations techniques
+observables. Il ne constitue ni un score de dangerosité, ni une preuve de
+compromission.
 
 ## Installation rapide
 

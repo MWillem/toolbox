@@ -149,6 +149,64 @@ def bluetooth_inventory() -> dict[str, object]:
     }
 
 
+def mobile_operator_info() -> dict[str, object]:
+    """Read non-sensitive carrier information from the current Android device."""
+    command = "termux-telephony-deviceinfo"
+    if not shutil.which(command):
+        return {
+            "available": False,
+            "scope": "appareil courant uniquement",
+            "description": (
+                "Informations téléphoniques indisponibles. Cette fonction nécessite "
+                "Termux:API sur le téléphone qui exécute la toolbox."
+            ),
+            "operator": {},
+            "limitations": [
+                "L'opérateur mobile d'un téléphone tiers ne peut pas être déduit du Wi-Fi.",
+                "Android peut exiger l'autorisation Téléphone pour Termux:API.",
+            ],
+        }
+    result = _run([command], timeout=20)
+    try:
+        payload = json.loads(str(result["output"])) if result["available"] else {}
+    except json.JSONDecodeError:
+        payload = {}
+    allowed = (
+        "network_operator_name",
+        "network_operator",
+        "network_country_iso",
+        "network_type",
+        "network_roaming",
+        "sim_operator_name",
+        "sim_operator",
+        "sim_country_iso",
+        "sim_state",
+        "phone_count",
+        "phone_type",
+        "data_enabled",
+        "data_state",
+    )
+    operator = {
+        key: payload[key]
+        for key in allowed
+        if isinstance(payload, dict) and payload.get(key) not in {"", None}
+    }
+    return {
+        "available": bool(result["available"] and operator),
+        "scope": "appareil courant uniquement",
+        "description": (
+            "Opérateur et état radio exposés par Android pour ce téléphone. "
+            "Les identifiants SIM, abonné et appareil sont filtrés."
+        ),
+        "operator": operator,
+        "limitations": [
+            "Le nom peut représenter le réseau actuellement utilisé ou l'opérateur de la SIM.",
+            "Itinérance, double SIM et opérateurs virtuels peuvent produire plusieurs notions d'opérateur.",
+            "Aucune information n'est collectée sur un téléphone tiers.",
+        ],
+    }
+
+
 def wireless_diagnostics() -> dict[str, object]:
     system = platform.system()
     tools = {
@@ -161,6 +219,7 @@ def wireless_diagnostics() -> dict[str, object]:
             "bluetoothctl",
             "termux-wifi-scaninfo",
             "termux-wifi-connectioninfo",
+            "termux-telephony-deviceinfo",
         )
     }
     return {
@@ -170,6 +229,7 @@ def wireless_diagnostics() -> dict[str, object]:
             tools[name] for name in ("netsh", "nmcli", "termux-wifi-scaninfo")
         ),
         "bluetooth_inventory_available": tools["bluetoothctl"] or system == "Windows",
+        "mobile_operator_available": tools["termux-telephony-deviceinfo"],
         "monitor_mode": (
             "Non piloté par la toolbox. Il dépend de Linux, du pilote, des droits "
             "et souvent d'un adaptateur externe compatible."

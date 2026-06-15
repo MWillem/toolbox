@@ -94,8 +94,8 @@ GUIDES = {
         "title": "WI-FI ET BLUETOOTH PEDAGOGIQUES",
         "why": "Comprendre l'environnement radio exposé par le système sans s'y connecter.",
         "when": "Pour un inventaire autorisé, un diagnostic matériel ou une démonstration en classe.",
-        "how": "La toolbox utilise netsh, NetworkManager ou Termux:API et lit les appareils Bluetooth connus.",
-        "gain": "SSID, BSSID, canal, signal, sécurité annoncée, limites et recommandations.",
+        "how": "La toolbox utilise netsh, NetworkManager ou Termux:API et lit les appareils Bluetooth connus. Sur le téléphone courant, Termux:API peut aussi exposer l'opérateur mobile sans conserver les identifiants SIM.",
+        "gain": "SSID, BSSID, canal, signal, sécurité annoncée, opérateur mobile local, limites et recommandations.",
     },
 }
 

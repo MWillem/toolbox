@@ -34,6 +34,10 @@ if [ ! -x ".venv/bin/python" ]; then
     "$PYTHON" -m venv .venv
 fi
 
+printf '%s\n' "Installation de la toolbox et de ses dépendances..."
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e .
+
 .venv/bin/python -m cybertoolbox --version
 
 printf '\n%s\n' "Installation terminée."

@@ -54,6 +54,12 @@ if not exist ".venv\Scripts\python.exe" (
     if errorlevel 1 goto failed
 )
 
+echo Installation de la toolbox et de ses dependances...
+".venv\Scripts\python.exe" -m pip install --upgrade pip
+if errorlevel 1 goto failed
+".venv\Scripts\python.exe" -m pip install -e .
+if errorlevel 1 goto failed
+
 ".venv\Scripts\python.exe" -m cybertoolbox --version
 if errorlevel 1 goto failed
 

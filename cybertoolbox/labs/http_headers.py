@@ -15,7 +15,7 @@ RECOMMENDED_HEADERS = {
 def fetch_headers(url: str, timeout: float = 5.0) -> tuple[int, dict[str, str]]:
     if not url.startswith(("http://", "https://")):
         raise ValueError("L'URL doit commencer par http:// ou https://.")
-    request = Request(url, method="HEAD", headers={"User-Agent": "CyberToolbox/2.0"})
+    request = Request(url, method="HEAD", headers={"User-Agent": "CyberToolbox/2.13"})
     try:
         with urlopen(request, timeout=timeout) as response:
             return response.status, dict(response.headers.items())

@@ -9,10 +9,18 @@ from pathlib import Path
 import shutil
 import sys
 import textwrap
+import time
+from dataclasses import asdict
 
 from . import __version__
 from .context_info import local_context, weather_for_coordinates
 from .device_profile import DeviceProfile, build_device_profile
+from .enrich_profile import (
+    calculate_digital_shadow_score,
+    display_watchdogs_profile,
+    profile_current_environment,
+    search_username_online,
+)
 from .exposure import exposure_inventory
 from .guide import format_guide, full_manual
 from .history import (
@@ -45,6 +53,14 @@ from .labs.crypto_basics import (
 )
 from .labs.file_audit import audit_local_configuration, audit_path
 from .labs.hashing import ALGORITHMS, hash_file, hash_text
+from .labs.hash_advanced import (
+    SUPPORTED_ALGORITHMS,
+    crack_hash as crack_advanced_hash,
+    generate_demo_hash,
+    hash_ntlm,
+    hash_security_lesson,
+    identify_hash,
+)
 from .labs.http_headers import analyze_headers, fetch_headers
 from .labs.local_lab import prepare_lab, serve_lab
 from .labs.log_analysis import analyze_log
@@ -54,9 +70,31 @@ from .labs.passwords import analyze_password
 from .labs.payloads import analyze_payload_file, create_harmless_payload
 from .labs.script_analysis import analyze_script
 from .labs.system_audit import audit_system
+from .labs.bluetooth_advanced import (
+    bluetooth_support,
+    bt_security_lesson,
+    profile_bluetooth_device,
+    scan_ble_devices,
+    scan_bluetooth_devices,
+)
+from .labs.nfc_tools import (
+    nfc_security_lesson,
+    parse_ndef_record,
+    scan_nfc,
+    write_nfc_url,
+)
+from .labs.qr_tools import (
+    decode_qr_wifi,
+    demonstrate_qr_phishing,
+    generate_qr_text,
+    generate_qr_vcard,
+    generate_qr_wifi,
+    read_qr_from_file,
+)
 from .labs.wireless import (
     bluetooth_inventory,
     local_device_identity,
+    mobile_operator_info,
     wifi_inventory,
     wifi_scan,
     wifi_security_lesson,
@@ -93,7 +131,7 @@ BANNER = r"""
    | || |_| | |_| | |___| |_) | |_| /  \
    |_| \___/ \___/|_____|____/ \___/_/\_\
 
-       CYBER LEARNING TOOLBOX 2.10
+       CYBER LEARNING TOOLBOX 2.13
 """
 
 TITLES = {
@@ -154,7 +192,7 @@ ou suivre une personne.
 
 COMPACT_BANNER = """
 ╔══════════════════════════════╗
-║  CYBER LEARNING TOOLBOX 2.10 ║
+║  CYBER LEARNING TOOLBOX 2.13 ║
 ╚══════════════════════════════╝
 """
 
@@ -394,7 +432,16 @@ def run_mapping(
 ) -> tuple[list[dict[str, str]], str]:
     if show_lesson and SETTINGS.show_lessons:
         _lesson("mapping")
+    print(f"[1/4] Validation du réseau privé : {network}")
+    print("[2/4] Sélection du moteur de découverte...")
+    print("[3/4] Recherche des hôtes actifs et résolution des noms...")
+    started = time.monotonic()
     hosts, engine = discover_hosts(network, prefer_nmap=SETTINGS.prefer_nmap)
+    duration = time.monotonic() - started
+    print(
+        f"[4/4] Découverte terminée en {duration:.2f} s : "
+        f"{len(hosts)} hôte(s) actif(s)."
+    )
     lines = [f"- `{host['address']}` - {host['hostname']}" for host in hosts]
     if not lines:
         lines = ["- Aucun hôte actif détecté. Certains pare-feu bloquent les sondes."]
@@ -431,12 +478,21 @@ def run_scan(
 ) -> tuple[list[dict[str, object]], str]:
     if show_lesson and SETTINGS.show_lessons:
         _lesson("ports")
+    print(f"[1/4] Validation de la cible : {target}")
     ports = parse_ports(ports_value)
+    print(f"[2/4] {len(ports)} port(s) sélectionné(s).")
+    print("[3/4] Scan et identification des services en cours...")
+    started = time.monotonic()
     results, engine = scan_ports(
         target,
         ports,
         timeout=SETTINGS.scan_timeout,
         prefer_nmap=SETTINGS.prefer_nmap,
+    )
+    duration = time.monotonic() - started
+    print(
+        f"[4/4] Scan terminé en {duration:.2f} s : "
+        f"{len(results)} port(s) ouvert(s)."
     )
     lines = []
     for item in results:
@@ -1144,26 +1200,37 @@ def interactive_menu() -> int:
         "8": ("Paramètres, manuel et outils", settings_help_menu),
     }
     while True:
-        clear_screen()
-        print(responsive_banner(BANNER, COMPACT_BANNER))
-        for key, (label, _) in actions.items():
-            print_menu_item(key, label)
-        print_menu_item("0", translate(SETTINGS.language, "quit"))
-        choice = input(f"\n{translate(SETTINGS.language, 'choice')} : ").strip()
-        if choice == "0":
-            print("Merci d'avoir utilisé la Cyber Learning Toolbox.")
-            return 0
-        action = actions.get(choice)
-        if not action:
-            print(translate(SETTINGS.language, "invalid"))
-            input("\nAppuyez sur Entrée pour continuer...")
-            continue
-        clear_screen()
         try:
-            action[1]()
-        except (ValueError, OSError) as exc:
-            print(f"Erreur : {exc}")
-        input("\nAppuyez sur Entrée pour revenir au menu...")
+            clear_screen()
+            print(responsive_banner(BANNER, COMPACT_BANNER))
+            for key, (label, _) in actions.items():
+                print_menu_item(key, label)
+            print_menu_item("0", translate(SETTINGS.language, "quit"))
+            choice = input(f"\n{translate(SETTINGS.language, 'choice')} : ").strip()
+            if choice == "0":
+                print("Merci d'avoir utilisé la Cyber Learning Toolbox.")
+                return 0
+            action = actions.get(choice)
+            if not action:
+                print(translate(SETTINGS.language, "invalid"))
+                input("\nAppuyez sur Entrée pour continuer...")
+                continue
+            clear_screen()
+            try:
+                action[1]()
+            except (ValueError, OSError) as exc:
+                print(f"Erreur : {exc}")
+            input("\nAppuyez sur Entrée pour revenir au menu...")
+        except KeyboardInterrupt:
+            print("\nInterruption demandée.")
+            try:
+                if _ask_boolean("Voulez-vous vraiment quitter la toolbox"):
+                    print("Merci d'avoir utilisé la Cyber Learning Toolbox.")
+                    return 130
+            except KeyboardInterrupt:
+                print("\nFermeture confirmée.")
+                return 130
+            print("Retour au menu principal.")
 
 
 def _interactive_gui() -> None:
@@ -1198,6 +1265,7 @@ def reconnaissance_menu() -> None:
     print_menu_item("4", "Profiler passivement un domaine public")
     print_menu_item("5", "Inventaire d'exposition local, style Shodan")
     print_menu_item("6", "Aide des ports connus")
+    print_menu_item("7", "Profiler enrichi façon Watch Dogs")
     print_menu_item("0", "Retour")
     choice = input("Choix : ").strip()
     if choice == "1":
@@ -1215,6 +1283,8 @@ def reconnaissance_menu() -> None:
         show_exposure_inventory()
     elif choice == "6":
         show_port_guide()
+    elif choice == "7":
+        watchdog_profiler_menu()
 
 
 def laboratories_menu() -> None:
@@ -1224,6 +1294,7 @@ def laboratories_menu() -> None:
     print_menu_item("2", "Résistance des mots de passe et WPA2")
     print_menu_item("3", "Encodage, hachage et chiffrement pédagogique")
     print_menu_item("4", "Serveur HTTP local volontairement incomplet")
+    print_menu_item("5", "Hash enrichi et cracking hors ligne")
     print_menu_item("0", "Retour")
     choice = input("Choix : ").strip()
     if choice == "1":
@@ -1237,6 +1308,8 @@ def laboratories_menu() -> None:
             serve_lab(8088)
         except KeyboardInterrupt:
             print("\nServeur arrêté.")
+    elif choice == "5":
+        hash_menu()
 
 
 def data_menu() -> None:
@@ -1245,6 +1318,8 @@ def data_menu() -> None:
     print_menu_item("1", "Données enregistrées et historiques")
     print_menu_item("2", "Gestion des rapports")
     print_menu_item("3", "Inventaire d'exposition local")
+    print_menu_item("4", "QR Codes")
+    print_menu_item("5", "NFC")
     print_menu_item("0", "Retour")
     choice = input("Choix : ").strip()
     if choice == "1":
@@ -1253,6 +1328,10 @@ def data_menu() -> None:
         manage_reports()
     elif choice == "3":
         show_exposure_inventory()
+    elif choice == "4":
+        qr_menu()
+    elif choice == "5":
+        nfc_menu()
 
 
 def settings_help_menu() -> None:
@@ -1762,11 +1841,16 @@ def run_environment_profile() -> None:
     identity = local_device_identity()
     wifi = wifi_scan()
     bluetooth = bluetooth_inventory()
+    operator = mobile_operator_info()
     print("\nAppareil courant :")
     for key, value in identity.items():
         print(f"- {key} : {value or 'indisponible'}")
     print(f"\nRéseaux Wi-Fi visibles : {len(wifi['networks'])}")
     print(f"Appareils Bluetooth exposés : {len(bluetooth.get('items', []))}")
+    print(
+        "Opérateur mobile local : "
+        f"{operator.get('operator', {}).get('network_operator_name', 'indisponible')}"
+    )
     print("Sources : système local, API Wi-Fi et inventaire Bluetooth autorisés.")
     print("Confiance : élevée pour le système local, variable pour les noms radio.")
     _report(
@@ -1777,6 +1861,10 @@ def run_environment_profile() -> None:
             (
                 "Bluetooth connu ou visible",
                 json.dumps(bluetooth.get("items", []), ensure_ascii=False, indent=2),
+            ),
+            (
+                "Opérateur mobile de l'appareil courant",
+                json.dumps(operator, ensure_ascii=False, indent=2),
             ),
             (
                 "Limites",
@@ -1889,6 +1977,8 @@ def run_wireless_menu() -> None:
     print_menu_item("2", "Afficher les appareils Bluetooth connus ou visibles")
     print_menu_item("3", "Diagnostiquer les capacités du système")
     print_menu_item("4", "Lancer le laboratoire WPA2 hors ligne")
+    print_menu_item("5", "Afficher l'opérateur mobile de cet appareil")
+    print_menu_item("6", "Bluetooth avancé et BLE")
     choice = input("Choix : ").strip()
     if choice == "1":
         run_wifi_scan()
@@ -1898,8 +1988,189 @@ def run_wireless_menu() -> None:
         run_wireless_diagnostic()
     elif choice == "4":
         run_wifi_password_lab()
+    elif choice == "5":
+        print(json.dumps(mobile_operator_info(), ensure_ascii=False, indent=2))
+    elif choice == "6":
+        bluetooth_menu()
     else:
         print("Choix invalide.")
+
+
+def qr_menu() -> None:
+    """Affiche le sous-menu pédagogique consacré aux QR Codes."""
+    clear_screen()
+    print("\n=== QR CODES ===")
+    print("Pourquoi : partager une information scannable et apprendre à vérifier sa destination.")
+    print("Quand : démonstration locale, carte de visite ou accès Wi-Fi autorisé.")
+    print_menu_item("1", "Générer QR texte")
+    print_menu_item("2", "Générer QR Wi-Fi")
+    print_menu_item("3", "Générer QR vCard")
+    print_menu_item("4", "Lire QR depuis fichier")
+    print_menu_item("5", "Leçon : sécurité des QR Codes")
+    print_menu_item("0", "Retour")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        print(generate_qr_text(input("Texte à encoder : ")))
+    elif choice == "2":
+        ssid = input("SSID : ").strip()
+        security = input("Sécurité [WPA/WEP/nopass] : ").strip() or "WPA"
+        password = getpass("Mot de passe Wi-Fi : ") if security.lower() != "nopass" else ""
+        print(generate_qr_wifi(ssid, password, security))
+    elif choice == "3":
+        print(
+            generate_qr_vcard(
+                input("Nom : ").strip(),
+                input("Téléphone : ").strip(),
+                input("Email : ").strip(),
+            )
+        )
+    elif choice == "4":
+        result = read_qr_from_file(input("Chemin de l'image : ").strip())
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        for item in result.get("items", []):
+            data = str(item.get("data", ""))
+            if data.upper().startswith("WIFI:"):
+                print("QR Wi-Fi décodé :")
+                print(json.dumps(decode_qr_wifi(data), ensure_ascii=False, indent=2))
+    elif choice == "5":
+        print(demonstrate_qr_phishing())
+
+
+def nfc_menu() -> None:
+    """Affiche le sous-menu NFC multi-plateforme."""
+    clear_screen()
+    print("\n=== NFC ===")
+    print("Pourquoi : comprendre les tags de proximité et leurs limites de sécurité.")
+    print("Quand : uniquement avec votre tag de démonstration et un lecteur autorisé.")
+    print_menu_item("1", "Scanner un tag NFC")
+    print_menu_item("2", "Lire des données NDEF")
+    print_menu_item("3", "Écrire une URL sur un tag")
+    print_menu_item("4", "Leçon sécurité NFC")
+    print_menu_item("0", "Retour")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        timeout = int(input("Durée du scan en secondes [5] : ").strip() or "5")
+        print(json.dumps(scan_nfc(timeout), ensure_ascii=False, indent=2))
+    elif choice == "2":
+        raw = bytes.fromhex(input("Enregistrement NDEF en hexadécimal : ").strip())
+        print(json.dumps(parse_ndef_record(raw), ensure_ascii=False, indent=2))
+    elif choice == "3":
+        print(
+            "Écriture réussie."
+            if write_nfc_url(input("URL à écrire : ").strip())
+            else "Écriture non supportée : aucun outil NFC d'écriture compatible détecté."
+        )
+    elif choice == "4":
+        print(nfc_security_lesson())
+
+
+def hash_menu() -> None:
+    """Affiche le laboratoire de génération, identification et cracking de hash."""
+    clear_screen()
+    print("\n=== HASH ENRICHI ===")
+    print("Pourquoi : distinguer intégrité, stockage de mots de passe et résistance au dictionnaire.")
+    print("Quand : laboratoire hors ligne avec vos propres hashes et wordlists.")
+    print_menu_item("1", "Générer un hash")
+    print_menu_item("2", "Identifier un hash")
+    print_menu_item("3", "Cracker un hash avec une wordlist")
+    print_menu_item("4", "Leçon : pourquoi les mots de passe sont hashés")
+    print_menu_item("0", "Retour")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        algorithm = input(
+            f"Algorithme [{'/'.join(SUPPORTED_ALGORITHMS)}] : "
+        ).strip().lower() or "sha256"
+        password = getpass("Texte ou mot de passe de démonstration : ")
+        result = hash_ntlm(password) if algorithm == "ntlm" else generate_demo_hash(
+            password,
+            algorithm,
+        )
+        print(f"{algorithm} : {result}")
+    elif choice == "2":
+        print(
+            json.dumps(
+                identify_hash(input("Hash à identifier : ").strip()),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    elif choice == "3":
+        target = input("Hash du laboratoire : ").strip()
+        wordlist = input("Chemin de la wordlist : ").strip()
+        algorithm = input("Algorithme [auto] : ").strip().lower() or "auto"
+        result = crack_advanced_hash(target, wordlist, algorithm)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif choice == "4":
+        print(hash_security_lesson())
+
+
+def bluetooth_menu() -> None:
+    """Affiche les fonctions Bluetooth classique, BLE et profilage local."""
+    clear_screen()
+    print("\n=== BLUETOOTH AVANCÉ ===")
+    print(json.dumps(bluetooth_support(), ensure_ascii=False, indent=2))
+    print_menu_item("1", "Scanner les appareils Bluetooth")
+    print_menu_item("2", "Scanner les appareils BLE")
+    print_menu_item("3", "Profiler un appareil")
+    print_menu_item("4", "Leçon sécurité Bluetooth")
+    print_menu_item("0", "Retour")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        timeout = int(input("Durée du scan [10] : ").strip() or "10")
+        print(json.dumps(scan_bluetooth_devices(timeout), ensure_ascii=False, indent=2))
+    elif choice == "2":
+        timeout = int(input("Durée du scan BLE [10] : ").strip() or "10")
+        print(json.dumps(scan_ble_devices(timeout), ensure_ascii=False, indent=2))
+    elif choice == "3":
+        print(
+            json.dumps(
+                profile_bluetooth_device(input("Adresse MAC Bluetooth : ").strip()),
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    elif choice == "4":
+        print(bt_security_lesson())
+
+
+def watchdog_profiler_menu() -> None:
+    """Affiche les profils enrichis demandés pour le mode Watch Dogs."""
+    clear_screen()
+    print("\n=== WATCHDOGS // PROFILER ENRICHI ===")
+    print_menu_item("1", "Scanner un username public")
+    print_menu_item("2", "Profiler mon environnement")
+    print_menu_item("3", "Profiler un appareil réseau autorisé")
+    print_menu_item("4", "Score de menace technique")
+    print_menu_item("0", "Retour")
+    choice = input("Choix : ").strip()
+    if choice == "1":
+        result = search_username_online(input("Username public : ").strip())
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif choice == "2":
+        if not _authorized():
+            return
+        profile = profile_current_environment()
+        profile["digital_shadow"] = calculate_digital_shadow_score(profile)
+        display_watchdogs_profile(profile)
+        print(json.dumps(profile, ensure_ascii=False, indent=2))
+    elif choice in {"3", "4"}:
+        if not _authorized():
+            return
+        target = input("IP ou nom local : ").strip()
+        ports = input(f"Ports [{SETTINGS.default_ports}] : ").strip() or SETTINGS.default_ports
+        profile = asdict(
+            build_device_profile(
+                target,
+                ports,
+                SETTINGS.scan_timeout,
+                SETTINGS.prefer_nmap,
+                SETTINGS.internet_correlation,
+            )
+        )
+        profile["digital_shadow"] = calculate_digital_shadow_score(profile)
+        display_watchdogs_profile(profile)
+        if choice == "3":
+            print(json.dumps(profile, ensure_ascii=False, indent=2))
 
 
 def manage_settings() -> None:

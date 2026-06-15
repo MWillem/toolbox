@@ -6,6 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import secrets
 import socket
+import time
 from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
 import webbrowser
@@ -13,7 +14,15 @@ import webbrowser
 from .context_info import local_context, weather_for_coordinates
 from .device_profile import build_device_profile
 from .exposure import exposure_inventory
-from .history import list_history, save_history
+from .history import (
+    delete_all_history,
+    delete_history,
+    history_display_name,
+    list_history,
+    load_history,
+    rename_history,
+    save_history,
+)
 from .labs.crypto_basics import base64_decode, base64_encode
 from .labs.file_audit import audit_local_configuration, audit_path
 from .labs.http_headers import analyze_headers, fetch_headers
@@ -30,10 +39,24 @@ from .labs.cracking import crack_wpa2_demo, derive_wpa2_pmk
 from .labs.wireless import (
     bluetooth_inventory,
     local_device_identity,
+    mobile_operator_info,
     wifi_scan,
     wireless_diagnostics,
 )
-from .reports import list_reports, read_report, save_professional_report
+from .mission import (
+    delete_all_missions,
+    delete_mission,
+    list_missions,
+    rename_mission,
+)
+from .reports import (
+    delete_all_reports,
+    delete_report,
+    list_reports,
+    read_report,
+    rename_report,
+    save_professional_report,
+)
 from .settings import Settings, load_settings, save_settings, settings_summary
 
 
@@ -43,7 +66,7 @@ CSS = """
 :root{color-scheme:dark;--bg:#050506;--panel:rgba(13,13,15,.94);
 --line:rgba(255,255,255,.18);--signal:#d600a9;--accent:#51d414;
 --text:#f2f2f2;--muted:#9b9b9f;--danger:#ff4d59;--orange:#ff9d00;
---glow:rgba(214,0,169,.18);--field:rgba(7,16,13,.72)}
+--glow:rgba(214,0,169,.18);--field:rgba(7,16,13,.72);--radius:16px}
 body[data-theme="github"]{--bg:#0d1117;--panel:rgba(22,27,34,.76);
 --signal:#58a6ff;--accent:#79c0ff;--glow:rgba(88,166,255,.2);--field:rgba(13,17,23,.78)}
 body[data-theme="terminal"]{--bg:#020805;--panel:rgba(4,20,12,.76);
@@ -154,6 +177,24 @@ white-space:pre-wrap;word-break:break-word;padding:16px;border:1px solid var(--l
 background:#020604;color:#c9fbe0}ul.clean{padding:0;list-style:none}ul.clean li{
 padding:9px 0;border-bottom:1px dashed var(--line)}.hero{max-width:850px;margin:6vh auto}
 .hero .card{padding:clamp(22px,5vw,46px)}
+.sidebar{border-radius:0 var(--radius) var(--radius) 0}
+nav a,.context-bar,.notice,.theme-swatch,pre,.table-wrap{border-radius:12px}
+.card,.loading-panel,.map,.geo-map{border-radius:var(--radius)}
+.app{border-radius:14px}.badge{border-radius:999px}
+.button,button,input,select,textarea{border-radius:10px;clip-path:none}
+button.danger{border-color:var(--danger);background:transparent;color:var(--danger)}
+button.danger:hover{background:var(--danger);color:#fff}
+.geo-map{position:relative;overflow:hidden}
+.map-tile{position:absolute;width:256px;height:256px;max-width:none}
+.map-marker{position:absolute;left:50%;top:50%;z-index:5;width:22px;height:22px;
+transform:translate(-50%,-50%);border:4px solid #fff;border-radius:50%;
+background:var(--signal);box-shadow:0 0 0 8px var(--glow),0 0 22px #000}
+.map-controls{grid-template-columns:1fr 1fr 1fr 1fr auto}
+.data-actions{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
+.data-actions form{display:flex;gap:8px;align-items:end;flex:1;min-width:220px}
+.data-actions form.compact{flex:0 0 auto;min-width:0}
+.ownership{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);
+color:var(--muted);font-size:11px}
 @media(max-width:900px){.shell{grid-template-columns:1fr}.sidebar{position:fixed;
 left:0;top:0;width:min(82vw,300px);height:100vh;box-shadow:20px 0 60px #000}
 .shell.nav-collapsed{grid-template-columns:1fr}.brand{margin-bottom:14px}
@@ -308,7 +349,9 @@ SESSION LOCALE ACTIVE</div></div>{nav}</aside><main><div class="topline"><div>
 <span class="muted">LOCAL // AUTHORIZED</span></div>
 <div class="context-bar"><span id="live-clock">{escape(context['time'])}</span>
 <span>{escape(context['timezone'])}</span><span>{escape(context['platform'])}</span></div>
-{body}</main></div>
+{body}<footer class="ownership">Cyber Learning Toolbox © 2026 Maréchaux Willem ·
+Projet original distribué sous licence MIT · La notice de copyright doit être conservée.</footer>
+</main></div>
 <div class="loading-overlay" id="loading-overlay" role="status" aria-live="polite">
 <section class="loading-panel"><div class="loading-head">
 <span id="loading-title">OPÉRATION EN COURS</span><span id="loading-time">00:00</span>
@@ -346,16 +389,47 @@ document.body.dataset.theme=choice.value;
 document.querySelector("[name=glass_effect]")?.addEventListener("change",event=>{{
 document.body.classList.toggle("no-glass",!event.target.checked);
 }});
+const mapProviders={{
+standard:{{url:"https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
+label:"OpenStreetMap Standard",maxZoom:19}},
+humanitarian:{{url:"https://a.tile.openstreetmap.fr/hot/{{z}}/{{x}}/{{y}}.png",
+label:"Humanitarian OpenStreetMap",maxZoom:19}},
+cycle:{{url:"https://a.tile.openstreetmap.fr/cyclosm/{{z}}/{{x}}/{{y}}.png",
+label:"CyclOSM",maxZoom:20}},
+topographic:{{url:"https://a.tile.opentopomap.org/{{z}}/{{x}}/{{y}}.png",
+label:"OpenTopoMap",maxZoom:17}}
+}};
 function showGeoMap(latitude,longitude){{
-const lat=Number(latitude),lon=Number(longitude);
+let lat=Number(latitude);const lon=Number(longitude);
 if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<-90||lat>90||lon<-180||lon>180)return;
-const delta=.018;
-const bbox=[lon-delta,lat-delta,lon+delta,lat+delta].join(",");
-const frame=document.getElementById("geo-map-frame");
-frame.src="https://www.openstreetmap.org/export/embed.html?bbox="+encodeURIComponent(bbox)
-+"&layer=mapnik&marker="+encodeURIComponent(lat+","+lon);
+lat=Math.max(-85.05112878,Math.min(85.05112878,lat));
+const map=document.getElementById("geo-map-frame");
+const provider=mapProviders[document.getElementById("map-layer").value]||mapProviders.standard;
+const requestedZoom=Number(document.getElementById("map-zoom").value)||15;
+const zoom=Math.min(requestedZoom,provider.maxZoom);
+const n=2**zoom;
+const x=(lon+180)/360*n;
+const latRad=lat*Math.PI/180;
+const y=(1-Math.asinh(Math.tan(latRad))/Math.PI)/2*n;
+const width=map.clientWidth||900,height=map.clientHeight||520;
+const horizontal=Math.ceil(width/512)+1,vertical=Math.ceil(height/512)+1;
+map.replaceChildren();
+for(let dx=-horizontal;dx<=horizontal;dx++)for(let dy=-vertical;dy<=vertical;dy++){{
+const rawX=Math.floor(x)+dx,tileY=Math.floor(y)+dy;
+if(tileY<0||tileY>=n)continue;
+const tileX=((rawX%n)+n)%n;
+const image=document.createElement("img");
+image.className="map-tile";image.alt="";image.loading="lazy";
+image.src=provider.url.replace("{{z}}",zoom).replace("{{x}}",tileX).replace("{{y}}",tileY);
+image.style.left=(width/2+(rawX-x)*256)+"px";
+image.style.top=(height/2+(tileY-y)*256)+"px";
+map.appendChild(image);
+}}
+const marker=document.createElement("span");marker.className="map-marker";
+marker.title=lat.toFixed(5)+", "+lon.toFixed(5);map.appendChild(marker);
+document.getElementById("map-attribution").textContent=provider.label;
 document.getElementById("geo-map-status").textContent=
-"Position affichée localement : "+lat.toFixed(5)+", "+lon.toFixed(5);
+"Position centrée : "+lat.toFixed(5)+", "+lon.toFixed(5)+" · zoom "+zoom;
 }}
 function locateMap(){{
 const status=document.getElementById("geo-map-status");
@@ -392,8 +466,9 @@ lab:["Création de l'espace pédagogique","Génération des artefacts inoffensif
 settings:["Validation des préférences","Écriture de la configuration locale"],
 default:["Validation de la demande","Traitement local en cours","Préparation de la réponse"]
 }};
-document.querySelectorAll("form").forEach(form=>form.addEventListener("submit",event=>{{
+document.querySelectorAll("form").forEach(form=>form.addEventListener("submit",async event=>{{
 if(form.dataset.loading==="1")return;
+if(form.dataset.confirm&&!window.confirm(form.dataset.confirm)){{event.preventDefault();return;}}
 event.preventDefault();
 form.dataset.loading="1";
 const route=(new URL(form.action)).pathname.split("/").filter(Boolean).pop()||"default";
@@ -411,17 +486,35 @@ log.appendChild(line);log.scrollTop=log.scrollHeight;}};
 const subject=form.querySelector("[name=subject],[name=target],[name=url]");
 if(subject?.value)addLine("Cible déclarée : "+subject.value);
 addLine(steps[index++]);
-setInterval(()=>{{elapsed++;timer.textContent=String(Math.floor(elapsed/60)).padStart(2,"0")
+const timerId=setInterval(()=>{{elapsed++;timer.textContent=String(Math.floor(elapsed/60)).padStart(2,"0")
 +":"+String(elapsed%60).padStart(2,"0");}},1000);
-setInterval(()=>{{if(index<steps.length)addLine(steps[index++]);
-else addLine("Traitement toujours actif, attente de la réponse...");}},1800);
-setTimeout(()=>form.requestSubmit?form.requestSubmit():form.submit(),90);
+const logId=setInterval(()=>{{if(index<steps.length)addLine(steps[index++]);
+else addLine("Traitement toujours actif depuis "+elapsed+" seconde(s), attente de la réponse...");}},1400);
+const started=Date.now();
+try{{
+const response=await fetch(form.action,{{
+method:(form.method||"POST").toUpperCase(),body:new FormData(form),
+credentials:"same-origin",redirect:"follow"
+}});
+const html=await response.text();
+const minimum=1200-(Date.now()-started);
+if(minimum>0)await new Promise(resolve=>setTimeout(resolve,minimum));
+clearInterval(timerId);clearInterval(logId);
+addLine("Réponse reçue, affichage du résultat...");
+const destination=new URL(response.url||form.action);
+history.replaceState({{}},"",destination.pathname+destination.search);
+document.open();document.write(html);document.close();
+}}catch(error){{
+clearInterval(timerId);clearInterval(logId);
+addLine("Le chargement dynamique a échoué, envoi classique...");
+form.submit();
+}}
 }}));
 </script></body></html>"""
 
 
 class ToolboxHandler(BaseHTTPRequestHandler):
-    server_version = "CyberToolboxGUI/1.0"
+    server_version = "CyberToolboxGUI/2.13"
 
     @property
     def state(self) -> WebState:
@@ -469,6 +562,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/wireless": lambda: self._run_wireless(data),
             "/context": lambda: self._run_context(data),
             "/tools": lambda: self._run_tools(data),
+            "/data": lambda: self._run_data(data),
             "/settings": lambda: self._save_settings(data),
         }
         handler = handlers.get(urlparse(self.path).path)
@@ -574,6 +668,7 @@ Conserver dans l'historique local.</label>
 
     def _run_recon(self, data: dict[str, list[str]]) -> None:
         self._clear()
+        started = time.monotonic()
         try:
             if not _checked(data, "authorized"):
                 raise ValueError("L'autorisation explicite est obligatoire.")
@@ -601,6 +696,7 @@ Conserver dans l'historique local.</label>
                 "action": action,
                 "subject": subject,
                 "engine": engine,
+                "duration_seconds": round(time.monotonic() - started, 2),
                 "results": results,
             }
             if _checked(data, "keep"):
@@ -722,14 +818,127 @@ exécuté. Tout reste dans <code>lab_workspace</code>.</p></section>
         self._redirect("/lab")
 
     def _reports(self) -> None:
-        items = "".join(
-            f'<li><a href="/report?name={quote(path.name)}">{escape(path.name)}</a></li>'
+        feedback = ""
+        if self.state.message:
+            feedback = f'<div class="notice">{escape(self.state.message)}</div>'
+            self.state.message = ""
+        elif self.state.error:
+            feedback = f'<div class="notice error">{escape(self.state.error)}</div>'
+            self.state.error = ""
+
+        def actions(scope: str, name: str, current_label: str) -> str:
+            return f"""<div class="data-actions">
+<form method="post" action="/data">{self._token()}
+<input type="hidden" name="scope" value="{scope}">
+<input type="hidden" name="name" value="{escape(name)}">
+<input type="hidden" name="operation" value="rename">
+<label>Nouveau nom<input name="new_name" value="{escape(current_label)}" required></label>
+<button type="submit">RENOMMER</button></form>
+<form class="compact" method="post" action="/data"
+data-confirm="Supprimer définitivement cet élément ?">{self._token()}
+<input type="hidden" name="scope" value="{scope}">
+<input type="hidden" name="name" value="{escape(name)}">
+<input type="hidden" name="operation" value="delete">
+<button class="danger" type="submit">SUPPRIMER</button></form></div>"""
+
+        report_items = "".join(
+            f"""<li><strong><a href="/report?name={quote(path.name)}">
+{escape(path.name)}</a></strong>{actions("report", path.name, path.stem)}</li>"""
             for path in list_reports()
         ) or "<li class='muted'>Aucun rapport disponible.</li>"
-        self._send(render_layout(
-            "Rapports",
-            f"<section class='card full'><h2>Archives Markdown</h2><ul class='clean'>{items}</ul></section>",
-        ))
+
+        history_items = []
+        for path in list_history():
+            payload = load_history(path)
+            history_items.append(
+                f"""<li><strong>{escape(history_display_name(payload))}</strong>
+<span class="muted"> · {escape(str(payload.get("kind", "")))}</span>
+{actions("history", path.name, str(payload.get("label", "")))}</li>"""
+            )
+        histories = "".join(history_items) or "<li class='muted'>Aucun historique disponible.</li>"
+
+        mission_items = "".join(
+            f"<li><strong>{escape(path.stem)}</strong>{actions('mission', path.name, path.stem)}</li>"
+            for path in list_missions()
+        ) or "<li class='muted'>Aucune mission sauvegardée.</li>"
+
+        delete_all = f"""<form method="post" action="/data"
+data-confirm="Supprimer tous les rapports, historiques et missions ? Cette action est irréversible.">
+{self._token()}<input type="hidden" name="scope" value="all">
+<input type="hidden" name="operation" value="delete_all">
+<button class="danger" type="submit">TOUT SUPPRIMER</button></form>"""
+        body = f"""{feedback}<section class="card full" data-tabs>
+<h2>Données locales</h2><p class="muted">Consultez, renommez ou supprimez les
+éléments stockés par la toolbox.</p><div class="tabs">
+<button class="tab-button active" type="button" data-tab="reports">Rapports</button>
+<button class="tab-button" type="button" data-tab="history">Historiques</button>
+<button class="tab-button" type="button" data-tab="missions">Missions</button>
+<button class="tab-button" type="button" data-tab="cleanup">Nettoyage</button></div>
+<div class="tab-panel active" data-panel="reports"><ul class="clean">{report_items}</ul></div>
+<div class="tab-panel" data-panel="history"><ul class="clean">{histories}</ul></div>
+<div class="tab-panel" data-panel="missions"><ul class="clean">{mission_items}</ul></div>
+<div class="tab-panel" data-panel="cleanup"><div class="notice error">
+Cette action efface toutes les données générées, mais pas le code du projet.</div>
+{delete_all}</div></section>"""
+        self._send(render_layout("Données", body))
+
+    def _run_data(self, data: dict[str, list[str]]) -> None:
+        self.state.message = ""
+        self.state.error = ""
+        scope = _field(data, "scope")
+        operation = _field(data, "operation")
+        name = _field(data, "name")
+        try:
+            if operation == "delete_all" and scope == "all":
+                histories = delete_all_history()
+                reports = delete_all_reports()
+                missions = delete_all_missions()
+                self.state.message = (
+                    f"{histories} historique(s), {reports} rapport(s) et "
+                    f"{missions} mission(s) supprimé(s)."
+                )
+            elif scope == "report":
+                path = self._stored_path(list_reports(), name)
+                if operation == "rename":
+                    renamed = rename_report(path, _field(data, "new_name"))
+                    self.state.message = f"Rapport renommé : {renamed.name}"
+                elif operation == "delete":
+                    delete_report(path)
+                    self.state.message = "Rapport supprimé."
+                else:
+                    raise ValueError("Action de rapport inconnue.")
+            elif scope == "history":
+                path = self._stored_path(list_history(), name)
+                if operation == "rename":
+                    rename_history(path, _field(data, "new_name"))
+                    self.state.message = "Historique renommé."
+                elif operation == "delete":
+                    delete_history(path)
+                    self.state.message = "Historique supprimé."
+                else:
+                    raise ValueError("Action d'historique inconnue.")
+            elif scope == "mission":
+                path = self._stored_path(list_missions(), name)
+                if operation == "rename":
+                    renamed = rename_mission(path, _field(data, "new_name"))
+                    self.state.message = f"Mission renommée : {renamed.name}"
+                elif operation == "delete":
+                    delete_mission(path)
+                    self.state.message = "Mission supprimée."
+                else:
+                    raise ValueError("Action de mission inconnue.")
+            else:
+                raise ValueError("Type de donnée inconnu.")
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/reports")
+
+    @staticmethod
+    def _stored_path(paths: list[Path], name: str) -> Path:
+        path = next((item for item in paths if item.name == name), None)
+        if path is None:
+            raise ValueError("Élément enregistré introuvable.")
+        return path
 
     def _exposure(self) -> None:
         inventory = exposure_inventory()
@@ -752,16 +961,30 @@ non enregistrée. Les appareils découverts sur le réseau ne sont jamais placé
 sur cette carte géographique.</div>
 <div class="map-controls"><input id="map-latitude" type="number" step="any"
 placeholder="Latitude"><input id="map-longitude" type="number" step="any"
-placeholder="Longitude"><button type="button"
+placeholder="Longitude"><select id="map-layer" aria-label="Fond de carte">
+<option value="standard">Standard</option>
+<option value="humanitarian">Humanitaire</option>
+<option value="cycle">Cyclable</option>
+<option value="topographic">Topographique / relief</option>
+</select><select id="map-zoom" aria-label="Niveau de zoom">
+<option value="12">Zoom régional</option><option value="14">Zoom ville</option>
+<option value="16" selected>Zoom quartier</option><option value="18">Zoom rue</option>
+</select><button type="button"
 onclick="showGeoMap(document.getElementById('map-latitude').value,
 document.getElementById('map-longitude').value)">AFFICHER</button></div>
 <button type="button" onclick="locateMap()">UTILISER MA POSITION</button>
 <p id="geo-map-status" class="muted">Aucune position demandée.</p>
-<iframe class="geo-map" id="geo-map-frame" title="Carte OpenStreetMap"
-loading="lazy" referrerpolicy="no-referrer"></iframe>
-<p class="muted">Fond cartographique ©
+<div class="geo-map" id="geo-map-frame" role="img"
+aria-label="Carte centrée sur la position choisie"></div>
+<p class="muted">Fond actif : <span id="map-attribution">aucun</span>. Données ©
 <a href="https://www.openstreetmap.org/copyright" target="_blank"
-rel="noreferrer">contributeurs OpenStreetMap</a>.</p></div>
+rel="noreferrer">contributeurs OpenStreetMap</a>. OpenStreetMap ne fournit pas
+de vue satellite native ; une telle vue nécessiterait un fournisseur d'imagerie
+distinct et ses propres conditions d'utilisation. Styles complémentaires :
+<a href="https://www.hotosm.org/" target="_blank" rel="noreferrer">HOT</a>,
+<a href="https://www.cyclosm.org/" target="_blank" rel="noreferrer">CyclOSM</a>
+et <a href="https://opentopomap.org/" target="_blank"
+rel="noreferrer">OpenTopoMap</a>.</p></div>
 <div class="tab-panel" data-panel="network">{render_topology()}
 <p class="muted">Vert : actif observé. Orange : service à vérifier. Cette vue
 est une topologie technique schématique, sans localisation physique.</p></div>
@@ -866,12 +1089,17 @@ data-tab="wpa">Lab WPA2</button></div>
 {self._token()}<label>Action<select name="action">
 <option value="wifi">Réseaux Wi-Fi visibles</option>
 <option value="bluetooth">Bluetooth connu ou visible</option>
+<option value="carrier">Opérateur mobile de cet appareil</option>
 <option value="environment">Profil de l'appareil courant</option>
 <option value="diagnostic">Diagnostic des capacités</option>
 </select></label><button type="submit">EXÉCUTER</button></form>
 <div class="notice">Sous Windows, la liste complète des réseaux voisins nécessite
 l'autorisation de localisation pour les applications de bureau. Sans elle, seul
-le réseau connecté peut être disponible.</div></div>
+le réseau connecté peut être disponible.<br><br>
+Sur Android, le scan fonctionne dans Termux avec l'application Termux:API,
+le paquet <code>termux-api</code> et les permissions Localisation/Appareils à
+proximité. L'opérateur mobile n'est lisible que pour le téléphone qui exécute
+la toolbox, jamais pour un appareil tiers observé en Wi-Fi ou Bluetooth.</div></div>
 <div class="tab-panel" data-panel="wpa"><h2>Lab WPA2 hors ligne</h2>
 <form method="post" action="/wireless">{self._token()}
 <input type="hidden" name="action" value="wifi_lab">
@@ -893,11 +1121,14 @@ password</textarea></label>
                 result = wifi_scan()
             elif action == "bluetooth":
                 result = bluetooth_inventory()
+            elif action == "carrier":
+                result = mobile_operator_info()
             elif action == "environment":
                 result = {
                     "identity": local_device_identity(),
                     "wifi": wifi_scan(),
                     "bluetooth": bluetooth_inventory(),
+                    "mobile_operator": mobile_operator_info(),
                 }
             elif action == "diagnostic":
                 result = wireless_diagnostics()
@@ -1031,10 +1262,12 @@ name="scan_timeout" value="{settings.scan_timeout}"></label>
         self.send_header("Content-Length", str(len(payload)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
-        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+            "img-src 'self' data: https://tile.openstreetmap.org "
+            "https://*.tile.openstreetmap.fr https://*.tile.opentopomap.org; "
             "frame-src https://www.openstreetmap.org",
         )
         self.end_headers()
