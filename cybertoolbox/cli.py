@@ -93,7 +93,7 @@ BANNER = r"""
    | || |_| | |_| | |___| |_) | |_| /  \
    |_| \___/ \___/|_____|____/ \___/_/\_\
 
-       CYBER LEARNING TOOLBOX 2.9
+       CYBER LEARNING TOOLBOX 2.10
 """
 
 TITLES = {
@@ -154,7 +154,7 @@ ou suivre une personne.
 
 COMPACT_BANNER = """
 ╔══════════════════════════════╗
-║  CYBER LEARNING TOOLBOX 2.9  ║
+║  CYBER LEARNING TOOLBOX 2.10 ║
 ╚══════════════════════════════╝
 """
 
@@ -1916,19 +1916,25 @@ def manage_settings() -> None:
     elif choice == "2":
         SETTINGS.report_mode = input("Rapports [ask/auto/off] : ").strip().lower()
     elif choice == "3":
+        SETTINGS.theme = input(
+            "Thème GUI [violet/github/terminal/ocean/amber] : "
+        ).strip().lower()
+    elif choice == "4":
+        SETTINGS.glass_effect = _ask_boolean("Activer l'effet verre dans la GUI")
+    elif choice == "5":
         value = input(f"Ports par défaut [{SETTINGS.default_ports}] : ").strip()
         if value:
             parse_ports(value)
             SETTINGS.default_ports = value
-    elif choice == "4":
-        SETTINGS.prefer_nmap = _ask_boolean("Préférer Nmap lorsqu'il est disponible")
-    elif choice == "5":
-        SETTINGS.show_lessons = _ask_boolean("Afficher les explications pédagogiques")
     elif choice == "6":
+        SETTINGS.prefer_nmap = _ask_boolean("Préférer Nmap lorsqu'il est disponible")
+    elif choice == "7":
+        SETTINGS.show_lessons = _ask_boolean("Afficher les explications pédagogiques")
+    elif choice == "8":
         SETTINGS.internet_correlation = _ask_boolean(
             "Autoriser la corrélation DNS du nom de l'appareil"
         )
-    elif choice == "7":
+    elif choice == "9":
         SETTINGS.scan_timeout = float(input("Délai TCP en secondes [0.1-5] : ").strip())
     else:
         print("Choix invalide.")

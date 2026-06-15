@@ -12,6 +12,8 @@ SETTINGS_PATH = Path(__file__).resolve().parent.parent / ".cybertoolbox.json"
 class Settings:
     language: str = "fr"
     report_mode: str = "ask"
+    theme: str = "violet"
+    glass_effect: bool = True
     default_ports: str = "1-1024"
     prefer_nmap: bool = True
     show_lessons: bool = True
@@ -23,6 +25,8 @@ class Settings:
             raise ValueError("Langue acceptée : fr ou en.")
         if self.report_mode not in {"ask", "auto", "off"}:
             raise ValueError("Mode de rapport accepté : ask, auto ou off.")
+        if self.theme not in {"violet", "github", "terminal", "ocean", "amber"}:
+            raise ValueError("Thème accepté : violet, github, terminal, ocean ou amber.")
         if not 0.1 <= self.scan_timeout <= 5.0:
             raise ValueError("Le délai de scan doit être compris entre 0.1 et 5 secondes.")
 
@@ -50,6 +54,8 @@ def settings_summary(settings: Settings) -> list[tuple[str, str]]:
     return [
         ("Langue / Language", settings.language),
         ("Rapports", settings.report_mode),
+        ("Thème", settings.theme),
+        ("Effet verre", "oui" if settings.glass_effect else "non"),
         ("Ports par défaut", settings.default_ports),
         ("Préférer Nmap", "oui" if settings.prefer_nmap else "non"),
         ("Afficher les explications", "oui" if settings.show_lessons else "non"),

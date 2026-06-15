@@ -56,6 +56,11 @@ sur téléphone et une console tactique sur PC, avec noir, gris, magenta et vert
 Il utilise une identité originale : aucun logo ou ressource des jeux de
 référence n'est intégré.
 
+Le menu latéral fonctionne comme un tiroir hamburger et peut rester masqué.
+L'onglet **Apparence** des réglages propose plusieurs palettes : violet, bleu
+GitHub, vert terminal, bleu océan et ambre. L'effet glassmorphism ajoute des
+panneaux translucides et floutés ; il peut être désactivé avec un interrupteur.
+
 Sous Windows :
 
 ```powershell
@@ -119,9 +124,20 @@ requête demandée et ne sont pas enregistrées par la toolbox.
 La géolocalisation est demandée par le navigateur et reste facultative. Sur un
 téléphone, elle peut nécessiter l'autorisation Android correspondante.
 
-### Carte tactique
+### Cartographie
 
-La GUI génère une carte réseau SVG à partir des scans de ports conservés :
+La page Carte possède deux onglets complémentaires :
+
+- **Carte géographique** : une carte OpenStreetMap interactive centrée sur des
+  coordonnées saisies ou sur la position explicitement autorisée dans le
+  navigateur ;
+- **Topologie réseau** : une carte SVG construite à partir des scans de ports
+  conservés.
+
+La position géographique n'est pas enregistrée. Les appareils découverts sur le
+réseau ne sont jamais placés automatiquement sur cette carte.
+
+Dans la topologie réseau :
 
 - la toolbox est placée au centre ;
 - chaque actif autorisé devient un nœud ;
@@ -130,6 +146,24 @@ La GUI génère une carte réseau SVG à partir des scans de ports conservés :
 
 Cette carte est schématique, comme une vue tactique. Elle n'affiche pas la
 position physique d'une personne ou d'un appareil.
+
+### Réseaux Wi-Fi visibles
+
+Sur Windows, la toolbox utilise `netsh wlan show networks mode=bssid` pour
+demander les réseaux visibles, y compris ceux auxquels le PC n'est pas connecté.
+Le réseau actif est marqué `connected: true`.
+
+Les versions récentes de Windows protègent ces informations par l'autorisation
+de localisation. Si seul le réseau connecté apparaît :
+
+1. ouvrir **Paramètres > Confidentialité et sécurité > Localisation** ;
+2. activer les services de localisation ;
+3. autoriser les applications de bureau à accéder à la localisation ;
+4. relancer le scan Wi-Fi, éventuellement depuis un terminal administrateur si
+   Windows le demande explicitement.
+
+Sans cette permission, la toolbox indique que le scan est incomplet et affiche
+seulement le réseau connecté lorsqu'il reste accessible.
 
 ### Vue type Shodan
 

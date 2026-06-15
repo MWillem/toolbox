@@ -42,18 +42,31 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CSS = """
 :root{color-scheme:dark;--bg:#050506;--panel:rgba(13,13,15,.94);
 --line:rgba(255,255,255,.18);--signal:#d600a9;--accent:#51d414;
---text:#f2f2f2;--muted:#9b9b9f;--danger:#ff4d59;--orange:#ff9d00}
+--text:#f2f2f2;--muted:#9b9b9f;--danger:#ff4d59;--orange:#ff9d00;
+--glow:rgba(214,0,169,.18);--field:rgba(7,16,13,.72)}
+body[data-theme="github"]{--bg:#0d1117;--panel:rgba(22,27,34,.76);
+--signal:#58a6ff;--accent:#79c0ff;--glow:rgba(88,166,255,.2);--field:rgba(13,17,23,.78)}
+body[data-theme="terminal"]{--bg:#020805;--panel:rgba(4,20,12,.76);
+--signal:#39ff88;--accent:#b6ff3b;--glow:rgba(57,255,136,.18);--field:rgba(2,14,8,.8)}
+body[data-theme="ocean"]{--bg:#06121b;--panel:rgba(8,31,45,.76);
+--signal:#00c8ff;--accent:#00ffd0;--glow:rgba(0,200,255,.2);--field:rgba(4,24,35,.8)}
+body[data-theme="amber"]{--bg:#110b03;--panel:rgba(32,21,7,.78);
+--signal:#ffad22;--accent:#ffe066;--glow:rgba(255,173,34,.2);--field:rgba(25,15,4,.8)}
 *{box-sizing:border-box}html{background:var(--bg)}body{min-height:100vh;margin:0;
 color:var(--text);font:15px/1.55 "Cascadia Code","JetBrains Mono",Consolas,monospace;
 background:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
 linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px),
-radial-gradient(circle at 85% 10%,rgba(214,0,169,.16),transparent 30%),#050506;
+radial-gradient(circle at 85% 10%,var(--glow),transparent 30%),var(--bg);
 background-size:28px 28px,28px 28px,auto,auto}body:after{content:"";position:fixed;
 inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,transparent 0 3px,
 rgba(255,255,255,.012) 4px)}a{color:var(--signal);text-decoration:none}
 a:hover{color:var(--accent)}.shell{min-height:100vh;display:grid;
-grid-template-columns:250px minmax(0,1fr)}.sidebar{position:sticky;top:0;height:100vh;
-padding:24px 18px;border-right:1px solid var(--line);background:rgba(3,9,7,.95)}
+grid-template-columns:250px minmax(0,1fr);transition:grid-template-columns .25s ease}
+.sidebar{position:sticky;top:0;height:100vh;padding:24px 18px;border-right:1px solid var(--line);
+background:var(--panel);backdrop-filter:blur(24px) saturate(130%);
+transition:transform .25s ease,opacity .2s ease;z-index:20}.shell.nav-collapsed{
+grid-template-columns:0 minmax(0,1fr)}.shell.nav-collapsed .sidebar{
+transform:translateX(-102%);opacity:0;pointer-events:none}
 .brand{margin-bottom:30px;letter-spacing:.08em}.brand strong{display:block;
 color:var(--signal);font-size:18px}.brand small,.muted,.eyebrow{color:var(--muted)}
 .status{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:11px}
@@ -70,12 +83,16 @@ var(--signal);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
 .eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:11px}.grid{display:
 grid;grid-template-columns:repeat(12,1fr);gap:16px}.card{grid-column:span 4;
 position:relative;overflow:hidden;padding:20px;border:1px solid var(--line);
-background:var(--panel);box-shadow:0 0 30px rgba(214,0,169,.08)}.card:before{
+background:var(--panel);backdrop-filter:blur(22px) saturate(125%);
+box-shadow:0 14px 45px var(--glow)}.no-glass .card,.no-glass .sidebar,
+.no-glass .loading-panel{backdrop-filter:none}.no-glass{--panel:#101014;
+--field:#07100d}.card:before{
 content:"";position:absolute;width:70px;height:2px;right:0;top:0;background:
 var(--signal);box-shadow:0 0 12px var(--signal)}.card.wide{grid-column:span 8}
 .card.full{grid-column:1/-1}.metric{color:var(--accent);font-size:30px;font-weight:700}
 .app-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
-.app{min-height:120px;padding:16px;border:1px solid var(--line);background:#101012;
+.app{min-height:120px;padding:16px;border:1px solid var(--line);background:var(--panel);
+backdrop-filter:blur(16px);
 display:flex;flex-direction:column;justify-content:space-between}.app strong{color:var(--text)}
 .app span{color:var(--muted);font-size:12px}.app:hover{border-color:var(--signal);
 box-shadow:0 0 22px rgba(214,0,169,.16)}.group-label{margin:22px 0 8px;color:var(--signal);
@@ -85,12 +102,13 @@ gap:18px;flex-wrap:wrap;padding:10px 14px;background:#d0d0d0;color:#111;font-wei
 .node{fill:#18181c;stroke:var(--accent);stroke-width:2}.node-risk{stroke:var(--orange)}
 .edge{stroke:#5c5c62;stroke-width:1}.map-label{fill:#eee;font-size:12px}
 .badge{display:inline-block;padding:3px 7px;border:1px solid var(--line);font-size:11px}
-.button,button{display:inline-block;border:1px solid var(--signal);padding:10px 15px;
+.menu-toggle{width:44px;height:40px;padding:0;display:grid;place-items:center;font-size:22px;
+clip-path:none;background:transparent;color:var(--text)}.button,button{display:inline-block;border:1px solid var(--signal);padding:10px 15px;
 color:#03100a;background:var(--signal);font:inherit;font-weight:700;cursor:pointer;
 clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)}
 .button:hover,button:hover{background:var(--accent);color:#03100a}form{display:grid;
 gap:14px}label{display:grid;gap:6px;color:var(--muted)}input,select,textarea{width:100%;
-border:1px solid var(--line);background:#07100d;color:var(--text);padding:11px 12px;
+border:1px solid var(--line);background:var(--field);color:var(--text);padding:11px 12px;
 font:inherit;outline:none}input:focus,select:focus,textarea:focus{border-color:var(--signal)}
 input[type=checkbox]{width:auto;accent-color:var(--signal)}.check{display:flex;
 align-items:flex-start;gap:9px}.notice{padding:13px 15px;border-left:3px solid
@@ -114,19 +132,37 @@ box-shadow:0 0 12px var(--accent);animation:scan 1.15s ease-in-out infinite}
 .loading-log{height:150px;margin:0;overflow:auto;border:1px solid var(--line);
 background:#020203;color:#d8d8dc;font-size:12px}.loading-log span{display:block;
 padding:3px 0}.loading-log span:before{content:"> ";color:var(--accent)}
+.tabs{display:flex;gap:8px;overflow-x:auto;margin-bottom:16px}.tab-button{
+background:transparent;color:var(--muted);clip-path:none;border-color:var(--line)}
+.tab-button.active{color:#050506;background:var(--signal);border-color:var(--signal)}
+.tab-panel{display:none}.tab-panel.active{display:block}.switch{display:flex;
+align-items:center;justify-content:space-between;gap:16px;padding:12px 0;
+border-bottom:1px solid var(--line)}.switch input{position:absolute;opacity:0}
+.switch-track{width:50px;height:28px;padding:3px;border-radius:999px;background:#3a3a40;
+transition:.2s}.switch-track:after{content:"";display:block;width:22px;height:22px;
+border-radius:50%;background:#fff;transition:.2s}.switch input:checked+.switch-track{
+background:var(--signal)}.switch input:checked+.switch-track:after{transform:translateX(22px)}
+.theme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.theme-choice{position:relative}.theme-choice input{position:absolute;opacity:0}
+.theme-swatch{display:block;padding:14px;border:1px solid var(--line);background:var(--panel);
+cursor:pointer}.theme-choice input:checked+.theme-swatch{border-color:var(--signal);
+box-shadow:0 0 20px var(--glow)}.geo-map{width:100%;height:min(62vh,620px);
+border:1px solid var(--line);background:#0a0a0d}.map-controls{display:grid;
+grid-template-columns:1fr 1fr auto;gap:10px;margin-bottom:12px}
 pre{max-width:100%;overflow:auto;
 white-space:pre-wrap;word-break:break-word;padding:16px;border:1px solid var(--line);
 background:#020604;color:#c9fbe0}ul.clean{padding:0;list-style:none}ul.clean li{
 padding:9px 0;border-bottom:1px dashed var(--line)}.hero{max-width:850px;margin:6vh auto}
 .hero .card{padding:clamp(22px,5vw,46px)}
-@media(max-width:900px){.shell{grid-template-columns:1fr}.sidebar{position:relative;
-height:auto;border-right:0;border-bottom:1px solid var(--line)}.brand{margin-bottom:14px}
-nav{display:flex;overflow-x:auto}nav a{white-space:nowrap;border-left:0;
-border-bottom:2px solid transparent}.card,.card.wide{grid-column:span 6}}
+@media(max-width:900px){.shell{grid-template-columns:1fr}.sidebar{position:fixed;
+left:0;top:0;width:min(82vw,300px);height:100vh;box-shadow:20px 0 60px #000}
+.shell.nav-collapsed{grid-template-columns:1fr}.brand{margin-bottom:14px}
+nav{display:grid}.card,.card.wide{grid-column:span 6}}
 @media(max-width:600px){main{padding:22px 14px 40px}.card,.card.wide,.card.full{
 grid-column:1/-1}.topline{display:block}.table-wrap{overflow-x:auto}
 .sidebar{padding:10px}.brand{display:none}.app-grid{grid-template-columns:repeat(2,1fr)}
-.app{min-height:105px}.context-bar{position:sticky;top:0;z-index:4;font-size:12px}}
+.app{min-height:105px}.context-bar{position:sticky;top:0;z-index:4;font-size:12px}
+.map-controls{grid-template-columns:1fr}.geo-map{height:56vh}}
 """
 
 
@@ -252,18 +288,22 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
             f"<title>{escape(title)}</title><style>{CSS}</style></head>"
             f'<body><main class="hero">{body}</main></body></html>'
         )
+    settings = load_settings()
     nav = """<nav><a href="/">Dashboard</a><a href="/operations">Opérations</a>
 <a href="/recon">Recon</a>
 <a href="/profile">Profiler</a><a href="/lab">Labs</a><a href="/wireless">Sans-fil</a>
 <a href="/exposure">Exposition</a><a href="/map">Carte</a><a href="/reports">Données</a>
 <a href="/tools">Outils</a><a href="/context">Contexte</a><a href="/settings">Réglages</a></nav>"""
     context = local_context()
+    body_class = "" if settings.glass_effect else "no-glass"
     return f"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{escape(title)}</title><style>{CSS}</style></head><body><div class="shell">
+<title>{escape(title)}</title><style>{CSS}</style></head>
+<body class="{body_class}" data-theme="{escape(settings.theme)}"><div class="shell" id="app-shell">
 <aside class="sidebar"><div class="brand"><strong>CYBER//TOOLBOX</strong>
 <small>LOCAL OPERATIONS CONSOLE</small><div class="status"><span class="pulse"></span>
 SESSION LOCALE ACTIVE</div></div>{nav}</aside><main><div class="topline"><div>
+<button class="menu-toggle" id="menu-toggle" type="button" aria-label="Afficher ou masquer le menu">☰</button>
 <span class="eyebrow">Interface sécurisée</span><h1>{escape(title)}</h1></div>
 <span class="muted">LOCAL // AUTHORIZED</span></div>
 <div class="context-bar"><span id="live-clock">{escape(context['time'])}</span>
@@ -279,6 +319,56 @@ setInterval(()=>{{const e=document.getElementById('live-clock');if(e)e.textConte
 function locate(){{if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(p=>{{
 document.querySelector('[name=latitude]').value=p.coords.latitude.toFixed(5);
 document.querySelector('[name=longitude]').value=p.coords.longitude.toFixed(5);}});}}
+const shell=document.getElementById("app-shell");
+const menuToggle=document.getElementById("menu-toggle");
+const savedMenu=localStorage.getItem("cybertoolbox-menu");
+if(savedMenu==="closed"||(savedMenu===null&&window.innerWidth<900))shell.classList.add("nav-collapsed");
+menuToggle.addEventListener("click",()=>{{
+shell.classList.toggle("nav-collapsed");
+localStorage.setItem("cybertoolbox-menu",shell.classList.contains("nav-collapsed")?"closed":"open");
+}});
+document.querySelectorAll(".sidebar a").forEach(link=>link.addEventListener("click",()=>{{
+if(window.innerWidth<900)localStorage.setItem("cybertoolbox-menu","closed");
+}}));
+document.querySelectorAll("[data-tabs]").forEach(group=>{{
+const buttons=group.querySelectorAll("[data-tab]");
+const panels=group.querySelectorAll("[data-panel]");
+buttons.forEach(button=>button.addEventListener("click",()=>{{
+buttons.forEach(item=>item.classList.remove("active"));
+panels.forEach(item=>item.classList.remove("active"));
+button.classList.add("active");
+group.querySelector(`[data-panel="${{button.dataset.tab}}"]`)?.classList.add("active");
+}}));
+}});
+document.querySelectorAll("[name=theme]").forEach(choice=>choice.addEventListener("change",()=>{{
+document.body.dataset.theme=choice.value;
+}}));
+document.querySelector("[name=glass_effect]")?.addEventListener("change",event=>{{
+document.body.classList.toggle("no-glass",!event.target.checked);
+}});
+function showGeoMap(latitude,longitude){{
+const lat=Number(latitude),lon=Number(longitude);
+if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<-90||lat>90||lon<-180||lon>180)return;
+const delta=.018;
+const bbox=[lon-delta,lat-delta,lon+delta,lat+delta].join(",");
+const frame=document.getElementById("geo-map-frame");
+frame.src="https://www.openstreetmap.org/export/embed.html?bbox="+encodeURIComponent(bbox)
++"&layer=mapnik&marker="+encodeURIComponent(lat+","+lon);
+document.getElementById("geo-map-status").textContent=
+"Position affichée localement : "+lat.toFixed(5)+", "+lon.toFixed(5);
+}}
+function locateMap(){{
+const status=document.getElementById("geo-map-status");
+if(!navigator.geolocation){{status.textContent="Géolocalisation non prise en charge.";return;}}
+status.textContent="Demande de position au navigateur...";
+navigator.geolocation.getCurrentPosition(position=>{{
+const lat=position.coords.latitude,lon=position.coords.longitude;
+document.getElementById("map-latitude").value=lat.toFixed(5);
+document.getElementById("map-longitude").value=lon.toFixed(5);
+showGeoMap(lat,lon);
+}},error=>status.textContent="Position refusée ou indisponible : "+error.message,
+{{enableHighAccuracy:false,timeout:10000,maximumAge:60000}});
+}}
 const loadingSteps={{
 discover:["Validation du réseau privé autorisé","Sélection de Nmap ou du moteur portable",
 "Envoi des sondes de découverte","Collecte des hôtes ayant répondu",
@@ -427,7 +517,7 @@ laboratoires, données et restitution.</p><a class="button" href="/recon">LANCER
 <a class="app" href="/lab"><strong>Labs</strong><span>Journaux, HTTP, secrets</span></a>
 <a class="app" href="/wireless"><strong>Sans-fil</strong><span>Wi-Fi, Bluetooth, WPA2</span></a>
 <a class="app" href="/exposure"><strong>Exposure</strong><span>Vue locale type Shodan</span></a>
-<a class="app" href="/map"><strong>Tactical Map</strong><span>Topologie des actifs</span></a>
+<a class="app" href="/map"><strong>Cartographie</strong><span>Position et topologie réseau</span></a>
 <a class="app" href="/reports"><strong>Archives</strong>
 <span>{history_count} historiques / {len(list_reports())} rapports</span></a>
 <a class="app" href="/tools"><strong>Tools</strong><span>Système, hash, DNS, TLS</span></a>
@@ -651,12 +741,32 @@ scans privés explicitement autorisés et conservés localement.</div>
         self._send(render_layout("Exposition locale", body))
 
     def _map(self) -> None:
-        body = f"""<div class="grid"><section class="card full">
-<span class="eyebrow">Tactical network view</span><h2>Carte des actifs</h2>
-{render_topology()}<p class="muted">Vert : actif observé. Orange : service à
-vérifier. Les positions sont schématiques et ne représentent pas une adresse
-géographique.</p></section></div>"""
-        self._send(render_layout("Carte tactique", body))
+        body = f"""<div class="grid"><section class="card full" data-tabs>
+<span class="eyebrow">Map console</span><h2>Cartographie</h2>
+<div class="tabs"><button class="tab-button active" type="button"
+data-tab="geo">Carte géographique</button><button class="tab-button" type="button"
+data-tab="network">Topologie réseau</button></div>
+<div class="tab-panel active" data-panel="geo">
+<div class="notice">La position est facultative, demandée par le navigateur et
+non enregistrée. Les appareils découverts sur le réseau ne sont jamais placés
+sur cette carte géographique.</div>
+<div class="map-controls"><input id="map-latitude" type="number" step="any"
+placeholder="Latitude"><input id="map-longitude" type="number" step="any"
+placeholder="Longitude"><button type="button"
+onclick="showGeoMap(document.getElementById('map-latitude').value,
+document.getElementById('map-longitude').value)">AFFICHER</button></div>
+<button type="button" onclick="locateMap()">UTILISER MA POSITION</button>
+<p id="geo-map-status" class="muted">Aucune position demandée.</p>
+<iframe class="geo-map" id="geo-map-frame" title="Carte OpenStreetMap"
+loading="lazy" referrerpolicy="no-referrer"></iframe>
+<p class="muted">Fond cartographique ©
+<a href="https://www.openstreetmap.org/copyright" target="_blank"
+rel="noreferrer">contributeurs OpenStreetMap</a>.</p></div>
+<div class="tab-panel" data-panel="network">{render_topology()}
+<p class="muted">Vert : actif observé. Orange : service à vérifier. Cette vue
+est une topologie technique schématique, sans localisation physique.</p></div>
+</section></div>"""
+        self._send(render_layout("Cartographie", body))
 
     def _context(self) -> None:
         body = f"""<div class="grid"><section class="card wide"><h2>Contexte local</h2>
@@ -745,17 +855,24 @@ le dossier de la toolbox. Les chemins absolus extérieurs sont refusés.</p>
         self._redirect("/tools")
 
     def _wireless(self) -> None:
-        body = f"""<div class="grid"><section class="card wide">
+        body = f"""<div class="grid"><section class="card full" data-tabs>
 <h2>Environnement sans-fil</h2><p class="muted">Toutes les collectes utilisent
 les API autorisées du système. Aucun appairage, connexion, capture ou paquet de
-désauthentification n'est émis.</p><form method="post" action="/wireless">
+désauthentification n'est émis.</p>
+<div class="tabs"><button class="tab-button active" type="button"
+data-tab="scan">Inventaire</button><button class="tab-button" type="button"
+data-tab="wpa">Lab WPA2</button></div>
+<div class="tab-panel active" data-panel="scan"><form method="post" action="/wireless">
 {self._token()}<label>Action<select name="action">
 <option value="wifi">Réseaux Wi-Fi visibles</option>
 <option value="bluetooth">Bluetooth connu ou visible</option>
 <option value="environment">Profil de l'appareil courant</option>
 <option value="diagnostic">Diagnostic des capacités</option>
-</select></label><button type="submit">EXÉCUTER</button></form></section>
-<section class="card"><h2>Lab WPA2 hors ligne</h2>
+</select></label><button type="submit">EXÉCUTER</button></form>
+<div class="notice">Sous Windows, la liste complète des réseaux voisins nécessite
+l'autorisation de localisation pour les applications de bureau. Sans elle, seul
+le réseau connecté peut être disponible.</div></div>
+<div class="tab-panel" data-panel="wpa"><h2>Lab WPA2 hors ligne</h2>
 <form method="post" action="/wireless">{self._token()}
 <input type="hidden" name="action" value="wifi_lab">
 <label>SSID fictif<input name="ssid" value="CTOS-LAB" required></label>
@@ -764,7 +881,7 @@ désauthentification n'est émis.</p><form method="post" action="/wireless">
 required>motdepasse
 classe-2026
 password</textarea></label>
-<button type="submit">TESTER HORS LIGNE</button></form></section>
+<button type="submit">TESTER HORS LIGNE</button></form></div></section>
 {self._result("/wireless")}</div>"""
         self._send(render_layout("Wi-Fi et Bluetooth", body))
 
@@ -825,8 +942,34 @@ password</textarea></label>
         if self.state.error:
             feedback = f"<div class='notice error'>{escape(self.state.error)}</div>"
             self.state.error = ""
-        body = f"""{feedback}<section class="card full"><h2>Préférences locales</h2>
+        themes = (
+            ("violet", "Violet", "#d600a9"),
+            ("github", "Bleu GitHub", "#58a6ff"),
+            ("terminal", "Vert terminal", "#39ff88"),
+            ("ocean", "Bleu océan", "#00c8ff"),
+            ("amber", "Ambre", "#ffad22"),
+        )
+        theme_choices = "".join(
+            f'<label class="theme-choice"><input type="radio" name="theme" '
+            f'value="{key}"{" checked" if settings.theme == key else ""}>'
+            f'<span class="theme-swatch"><strong style="color:{color}">● {label}</strong>'
+            "</span></label>"
+            for key, label, color in themes
+        )
+        body = f"""{feedback}<section class="card full" data-tabs>
+<h2>Préférences locales</h2>
 <form method="post" action="/settings">{self._token()}
+<div class="tabs"><button class="tab-button active" type="button"
+data-tab="appearance">Apparence</button><button class="tab-button" type="button"
+data-tab="behavior">Comportement</button><button class="tab-button" type="button"
+data-tab="network">Réseau</button></div>
+<div class="tab-panel active" data-panel="appearance"><div class="theme-grid">
+{theme_choices}</div>
+<label class="switch"><span><strong>Glassmorphism</strong><br>
+<span class="muted">Transparence et flou des panneaux</span></span>
+<input type="checkbox" name="glass_effect"{" checked" if settings.glass_effect else ""}>
+<span class="switch-track"></span></label></div>
+<div class="tab-panel" data-panel="behavior">
 <label>Langue<select name="language">
 <option value="fr"{" selected" if settings.language == "fr" else ""}>Français</option>
 <option value="en"{" selected" if settings.language == "en" else ""}>English</option>
@@ -834,13 +977,20 @@ password</textarea></label>
 <option value="ask"{" selected" if settings.report_mode == "ask" else ""}>Demander</option>
 <option value="auto"{" selected" if settings.report_mode == "auto" else ""}>Automatique</option>
 <option value="off"{" selected" if settings.report_mode == "off" else ""}>Désactivé</option>
-</select></label><label>Ports par défaut
+</select></label>
+<label class="switch"><span>Afficher les explications</span>
+<input type="checkbox" name="show_lessons"{" checked" if settings.show_lessons else ""}>
+<span class="switch-track"></span></label></div>
+<div class="tab-panel" data-panel="network"><label>Ports par défaut
 <input name="default_ports" value="{escape(settings.default_ports)}"></label>
 <label>Délai TCP<input type="number" step="0.1" min="0.1" max="5"
 name="scan_timeout" value="{settings.scan_timeout}"></label>
-<label class="check"><input type="checkbox" name="prefer_nmap"{" checked" if settings.prefer_nmap else ""}>Préférer Nmap.</label>
-<label class="check"><input type="checkbox" name="show_lessons"{" checked" if settings.show_lessons else ""}>Afficher les explications.</label>
-<label class="check"><input type="checkbox" name="internet_correlation"{" checked" if settings.internet_correlation else ""}>Autoriser la corrélation DNS.</label>
+<label class="switch"><span>Préférer Nmap</span>
+<input type="checkbox" name="prefer_nmap"{" checked" if settings.prefer_nmap else ""}>
+<span class="switch-track"></span></label>
+<label class="switch"><span>Autoriser la corrélation DNS</span>
+<input type="checkbox" name="internet_correlation"{" checked" if settings.internet_correlation else ""}>
+<span class="switch-track"></span></label></div>
 <button type="submit">ENREGISTRER</button></form></section>"""
         self._send(render_layout("Paramètres", body))
 
@@ -849,6 +999,8 @@ name="scan_timeout" value="{settings.scan_timeout}"></label>
             settings = Settings(
                 language=_field(data, "language", "fr"),
                 report_mode=_field(data, "report_mode", "ask"),
+                theme=_field(data, "theme", "violet"),
+                glass_effect=_checked(data, "glass_effect"),
                 default_ports=_field(data, "default_ports", "1-1024"),
                 prefer_nmap=_checked(data, "prefer_nmap"),
                 show_lessons=_checked(data, "show_lessons"),
@@ -882,7 +1034,8 @@ name="scan_timeout" value="{settings.scan_timeout}"></label>
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'",
+            "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+            "frame-src https://www.openstreetmap.org",
         )
         self.end_headers()
         self.wfile.write(payload)

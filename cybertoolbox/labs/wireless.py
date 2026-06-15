@@ -19,7 +19,52 @@ def wifi_scan() -> dict[str, object]:
     if system == "Windows":
         result = _run(["netsh", "wlan", "show", "networks", "mode=bssid"], timeout=30)
         networks = _parse_netsh_scan(result["output"]) if result["available"] else []
-        return _scan_result("netsh", networks, result)
+        connected_result = _run(["netsh", "wlan", "show", "interfaces"], timeout=15)
+        connected = (
+            _parse_netsh_interface(connected_result["output"])
+            if connected_result["available"]
+            else None
+        )
+        if result["available"]:
+            if connected:
+                matched = False
+                for network in networks:
+                    same_bssid = bool(connected["bssid"]) and (
+                        str(network["bssid"]).lower() == str(connected["bssid"]).lower()
+                    )
+                    same_ssid = network["ssid"] == connected["ssid"]
+                    if same_bssid or same_ssid:
+                        network["connected"] = True
+                        matched = True
+                if not matched:
+                    networks.append(connected)
+            return _scan_result("netsh", networks, result)
+        limitations = _wifi_limitations()
+        error = str(result.get("error") or result.get("output") or "")
+        if "localisation" in error.lower() or "location" in error.lower():
+            limitations.insert(
+                0,
+                "Windows bloque le scan complet : activez Paramètres > "
+                "Confidentialité et sécurité > Localisation, puis autorisez les applications de bureau.",
+            )
+        if "élévation" in error.lower() or "elevation" in error.lower():
+            limitations.insert(
+                1,
+                "Windows demande une élévation pour cette commande : relancez le terminal "
+                "en administrateur uniquement pour votre démonstration autorisée.",
+            )
+        return {
+            "available": bool(connected),
+            "scan_complete": False,
+            "engine": "netsh",
+            "description": (
+                "Le scan des réseaux voisins a été refusé par Windows. "
+                "Le réseau connecté est affiché comme information de secours."
+            ),
+            "networks": [connected] if connected else [],
+            "output": error,
+            "limitations": limitations,
+        }
     if shutil.which("nmcli"):
         result = _run(
             [
@@ -118,6 +163,22 @@ def wireless_diagnostics() -> dict[str, object]:
             "termux-wifi-connectioninfo",
         )
     }
+    return {
+        "platform": system,
+        "tools": tools,
+        "wifi_scan_available": any(
+            tools[name] for name in ("netsh", "nmcli", "termux-wifi-scaninfo")
+        ),
+        "bluetooth_inventory_available": tools["bluetoothctl"] or system == "Windows",
+        "monitor_mode": (
+            "Non piloté par la toolbox. Il dépend de Linux, du pilote, des droits "
+            "et souvent d'un adaptateur externe compatible."
+        ),
+        "termux_help": (
+            "Dans Termux : installer l'application Termux:API, puis exécuter "
+            "`pkg install termux-api` et accorder les permissions Android."
+        ),
+    }
 
 
 def local_device_identity() -> dict[str, str]:
@@ -140,22 +201,6 @@ def local_device_identity() -> dict[str, str]:
             if result["available"]:
                 identity[key] = str(result["output"]).strip()
     return identity
-    return {
-        "platform": system,
-        "tools": tools,
-        "wifi_scan_available": any(
-            tools[name] for name in ("netsh", "nmcli", "termux-wifi-scaninfo")
-        ),
-        "bluetooth_inventory_available": tools["bluetoothctl"] or system == "Windows",
-        "monitor_mode": (
-            "Non piloté par la toolbox. Il dépend de Linux, du pilote, des droits "
-            "et souvent d'un adaptateur externe compatible."
-        ),
-        "termux_help": (
-            "Dans Termux : installer l'application Termux:API, puis exécuter "
-            "`pkg install termux-api` et accorder les permissions Android."
-        ),
-    }
 
 
 def wifi_security_lesson(security: str) -> list[str]:
@@ -193,6 +238,7 @@ def _scan_result(
 ) -> dict[str, object]:
     return {
         "available": bool(process["available"]),
+        "scan_complete": bool(process["available"]),
         "engine": engine,
         "description": "Réseaux Wi-Fi visibles exposés par le système.",
         "networks": sorted(
@@ -239,7 +285,6 @@ def _run(command: list[str], timeout: int = 20) -> dict[str, object]:
             command,
             capture_output=True,
             text=True,
-            encoding="utf-8",
             errors="replace",
             timeout=timeout,
             check=False,
@@ -351,6 +396,30 @@ def _parse_netsh_scan(output: str) -> list[dict[str, object]]:
         if channel:
             current["channel"] = channel.group(1)
     return networks
+
+
+def _parse_netsh_interface(output: str) -> dict[str, object] | None:
+    values: dict[str, str] = {}
+    for raw_line in output.splitlines():
+        match = re.match(r"\s*([^:]+?)\s*:\s*(.*)", raw_line)
+        if match:
+            values[match.group(1).strip().lower()] = match.group(2).strip()
+    ssid = values.get("ssid", "")
+    if not ssid:
+        return None
+    signal = values.get("signal", "").rstrip("%")
+    return {
+        "ssid": ssid,
+        "bssid": values.get("bssid", ""),
+        "channel": values.get("canal", values.get("channel", "")),
+        "frequency": "",
+        "signal": _signal_percent_to_dbm(signal),
+        "security": values.get(
+            "authentification",
+            values.get("authentication", "inconnu"),
+        ),
+        "connected": True,
+    }
 
 
 def _parse_windows_bluetooth(output: str) -> list[dict[str, str]]:

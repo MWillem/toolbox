@@ -25,9 +25,12 @@ from cybertoolbox.labs.cracking import (
 from cybertoolbox.labs.payloads import analyze_payload_file, create_harmless_payload
 from cybertoolbox.labs.script_analysis import analyze_script
 from cybertoolbox.labs.wireless import (
+    _parse_netsh_interface,
     _parse_netsh_scan,
     _parse_nmcli_scan,
     _parse_termux_scan,
+    wireless_diagnostics,
+    wifi_scan,
     wifi_security_lesson,
 )
 from cybertoolbox.device_profile import infer_device_type
@@ -80,6 +83,8 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("&lt;script&gt;", page)
         self.assertIn('name="viewport"', page)
         self.assertIn('id="loading-overlay"', page)
+        self.assertIn('id="menu-toggle"', page)
+        self.assertIn('data-theme="', page)
 
     def test_structured_lists_use_one_aligned_table(self):
         rendered = _value(
@@ -171,17 +176,68 @@ class LabTests(unittest.TestCase):
             "    BSSID 1 : aa:bb:cc:dd:ee:ff\n"
             "         Signal : 90%\n"
             "         Channel : 11\n"
+            "SSID 2 : Invites\n"
+            "    Authentication : Open\n"
+            "    BSSID 1 : 11:22:33:44:55:66\n"
+            "         Signal : 55%\n"
+            "         Channel : 1\n"
         )
         termux = _parse_termux_scan(
             '[{"ssid":"MobileLab","bssid":"11:22:33:44:55:66",'
             '"frequency_mhz":2412,"rssi":-45,"capabilities":"[WPA2-PSK]"}]'
         )
-        for result in (nmcli, netsh, termux):
+        for result in (nmcli, termux):
             self.assertEqual(len(result), 1)
             self.assertIn("ssid", result[0])
             self.assertIn("security", result[0])
+        self.assertEqual(len(netsh), 2)
+        self.assertEqual(netsh[1]["ssid"], "Invites")
         self.assertEqual(nmcli[0]["ssid"], "Lab:Wifi")
         self.assertEqual(termux[0]["channel"], 1)
+
+    def test_windows_connected_wifi_is_normalized(self):
+        connected = _parse_netsh_interface(
+            "    SSID                   : Freebox-C81246\n"
+            "    BSSID                  : aa:bb:cc:dd:ee:ff\n"
+            "    Authentification       : WPA2-Personnel\n"
+            "    Signal                 : 86%\n"
+            "    Canal                  : 6\n"
+        )
+        self.assertIsNotNone(connected)
+        self.assertEqual(connected["ssid"], "Freebox-C81246")
+        self.assertEqual(connected["channel"], "6")
+        self.assertTrue(connected["connected"])
+
+    def test_windows_wifi_scan_explains_location_fallback(self):
+        interface = (
+            "SSID : Freebox-C81246\n"
+            "BSSID : aa:bb:cc:dd:ee:ff\n"
+            "Authentification : WPA2-Personnel\n"
+            "Signal : 86%\n"
+            "Canal : 6\n"
+        )
+        with patch("cybertoolbox.labs.wireless.platform.system", return_value="Windows"):
+            with patch("cybertoolbox.labs.wireless.shutil.which", return_value=None):
+                with patch(
+                    "cybertoolbox.labs.wireless._run",
+                    side_effect=[
+                        {
+                            "available": False,
+                            "output": "Autorisation de localisation nécessaire",
+                            "error": "Autorisation de localisation nécessaire",
+                        },
+                        {"available": True, "output": interface, "error": ""},
+                    ],
+                ):
+                    result = wifi_scan()
+        self.assertFalse(result["scan_complete"])
+        self.assertEqual(result["networks"][0]["ssid"], "Freebox-C81246")
+        self.assertTrue(any("localisation" in item.lower() for item in result["limitations"]))
+
+    def test_wireless_diagnostics_returns_capabilities(self):
+        result = wireless_diagnostics()
+        self.assertIn("platform", result)
+        self.assertIn("wifi_scan_available", result)
 
     def test_wifi_security_lesson_flags_open_networks(self):
         self.assertTrue(any("ouvert" in item.lower() for item in wifi_security_lesson("OPEN")))
@@ -279,11 +335,19 @@ class LabTests(unittest.TestCase):
     def test_settings_are_persistent(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"
-            expected = Settings(language="en", report_mode="off", default_ports="22,80")
+            expected = Settings(
+                language="en",
+                report_mode="off",
+                theme="github",
+                glass_effect=False,
+                default_ports="22,80",
+            )
             save_settings(expected, path)
             loaded = load_settings(path)
             self.assertEqual(loaded.language, "en")
             self.assertEqual(loaded.report_mode, "off")
+            self.assertEqual(loaded.theme, "github")
+            self.assertFalse(loaded.glass_effect)
             self.assertEqual(loaded.default_ports, "22,80")
 
     def test_scan_history_is_versioned_renamed_and_deleted(self):
