@@ -37,6 +37,8 @@ from cybertoolbox.labs.cracking import (
 from cybertoolbox.labs.payloads import analyze_payload_file, create_harmless_payload
 from cybertoolbox.labs.script_analysis import analyze_script
 from cybertoolbox.labs.wireless import (
+    _normalize_bluetooth_items,
+    _normalize_wifi_networks,
     _parse_netsh_interface,
     _parse_netsh_scan,
     _parse_nmcli_scan,
@@ -102,7 +104,8 @@ class SafetyTests(unittest.TestCase):
         self.assertIn('data-app-mode="', page)
         self.assertIn('data-map-mode="', page)
         self.assertIn("Maréchaux Willem", page)
-        self.assertIn("BY SC", page)
+        self.assertIn("recon SC", page)
+        self.assertIn("Observe. Profile. Correlate.", page)
         self.assertNotIn("SOURCE CORE", page)
         self.assertNotIn("DROP", page)
         self.assertIn("mapProviders", page)
@@ -283,6 +286,7 @@ class LabTests(unittest.TestCase):
         netsh = _parse_netsh_scan(
             "SSID 1 : Classe\n"
             "    Authentication : WPA2-Personal\n"
+            "    Encryption : CCMP\n"
             "    BSSID 1 : aa:bb:cc:dd:ee:ff\n"
             "         Signal : 90%\n"
             "         Channel : 11\n"
@@ -291,6 +295,11 @@ class LabTests(unittest.TestCase):
             "    BSSID 1 : 11:22:33:44:55:66\n"
             "         Signal : 55%\n"
             "         Channel : 1\n"
+            "Nom SSID : Freebox-19ACF0\n"
+            "    Authentification : WPA2-Personnel\n"
+            "    BSSID 1 : 22:33:44:55:66:77\n"
+            "         Signal : 75%\n"
+            "         Canal : 6\n"
         )
         termux = _parse_termux_scan(
             '[{"ssid":"MobileLab","bssid":"11:22:33:44:55:66",'
@@ -300,10 +309,50 @@ class LabTests(unittest.TestCase):
             self.assertEqual(len(result), 1)
             self.assertIn("ssid", result[0])
             self.assertIn("security", result[0])
-        self.assertEqual(len(netsh), 2)
+        self.assertEqual(len(netsh), 3)
         self.assertEqual(netsh[1]["ssid"], "Invites")
+        self.assertEqual(netsh[2]["ssid"], "Freebox-19ACF0")
+        self.assertEqual(netsh[0]["security"], "WPA2-Personal / CCMP")
         self.assertEqual(nmcli[0]["ssid"], "Lab:Wifi")
         self.assertEqual(termux[0]["channel"], 1)
+
+    def test_wifi_networks_get_settings_like_fields(self):
+        networks = _normalize_wifi_networks(
+            [
+                {
+                    "ssid": "Freebox-C81246",
+                    "bssid": "aa:bb:cc:dd:ee:ff",
+                    "channel": "11",
+                    "frequency": "",
+                    "signal": -58,
+                    "security": "WPA2-Personnel",
+                    "connected": True,
+                },
+                {
+                    "ssid": "",
+                    "bssid": "11:22:33:44:55:66",
+                    "channel": "40",
+                    "frequency": "",
+                    "signal": -70,
+                    "security": "Open",
+                },
+            ]
+        )
+        self.assertEqual(networks[0]["name"], "Freebox-C81246")
+        self.assertEqual(networks[0]["status"], "connecte")
+        self.assertEqual(networks[0]["band"], "2.4 GHz")
+        self.assertEqual(networks[0]["privacy"], "securise")
+        self.assertEqual(networks[1]["name"], "Reseau masque")
+        self.assertEqual(networks[1]["privacy"], "ouvert")
+
+    def test_bluetooth_items_get_settings_like_fields(self):
+        items = _normalize_bluetooth_items(
+            [{"name": "Casque", "identifier": "AA:BB:CC:DD:EE:FF", "status": "connu"}],
+            live_scan=True,
+        )
+        self.assertEqual(items[0]["name"], "Casque")
+        self.assertEqual(items[0]["identifier"], "AA:BB:CC:DD:EE:FF")
+        self.assertEqual(items[0]["source"], "scan visible")
 
     def test_windows_connected_wifi_is_normalized(self):
         connected = _parse_netsh_interface(

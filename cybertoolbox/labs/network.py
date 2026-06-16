@@ -72,6 +72,27 @@ def nmap_available() -> bool:
     return shutil.which("nmap") is not None
 
 
+def local_ipv4_network(default_prefix: int = 24) -> str:
+    """Return the current local IPv4 network as a conservative default."""
+    local_ip = ""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+            sock.connect(("8.8.8.8", 80))
+            local_ip = sock.getsockname()[0]
+    except OSError:
+        try:
+            local_ip = socket.gethostbyname(socket.gethostname())
+        except socket.gaierror:
+            return ""
+    try:
+        address = ipaddress.ip_address(local_ip)
+    except ValueError:
+        return ""
+    if not isinstance(address, ipaddress.IPv4Address) or not address.is_private:
+        return ""
+    return str(ipaddress.ip_network(f"{address}/{default_prefix}", strict=False))
+
+
 def discover_hosts(network_value: str, prefer_nmap: bool = True) -> tuple[list[dict[str, str]], str]:
     network = parse_private_network(network_value)
     if prefer_nmap and nmap_available():

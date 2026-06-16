@@ -61,7 +61,7 @@ def wifi_scan() -> dict[str, object]:
                 "Le scan des réseaux voisins a été refusé par Windows. "
                 "Le réseau connecté est affiché comme information de secours."
             ),
-            "networks": [connected] if connected else [],
+            "networks": _normalize_wifi_networks([connected] if connected else []),
             "output": error,
             "limitations": limitations,
         }
@@ -133,9 +133,12 @@ def bluetooth_inventory() -> dict[str, object]:
         items = _parse_windows_bluetooth(result["output"]) if result["available"] else []
         return _bluetooth_result("Get-PnpDevice", items, result)
     if shutil.which("bluetoothctl"):
+        scan_result = _run(["bluetoothctl", "--timeout", "8", "scan", "on"], timeout=12)
         result = _run(["bluetoothctl", "devices"])
         items = _parse_bluetoothctl(result["output"]) if result["available"] else []
-        return _bluetooth_result("bluetoothctl", items, result)
+        if not result["available"] and scan_result["available"]:
+            result = scan_result
+        return _bluetooth_result("bluetoothctl", items, result, live_scan=True)
     return {
         "available": False,
         "engine": "-",
@@ -296,13 +299,14 @@ def _scan_result(
     networks: list[dict[str, object]],
     process: dict[str, object],
 ) -> dict[str, object]:
+    normalized = _normalize_wifi_networks(networks)
     return {
         "available": bool(process["available"]),
         "scan_complete": bool(process["available"]),
         "engine": engine,
         "description": "Réseaux Wi-Fi visibles exposés par le système.",
         "networks": sorted(
-            networks,
+            normalized,
             key=lambda item: int(item.get("signal") or -100),
             reverse=True,
         ),
@@ -315,18 +319,31 @@ def _bluetooth_result(
     engine: str,
     items: list[dict[str, str]],
     process: dict[str, object],
+    live_scan: bool = False,
 ) -> dict[str, object]:
+    limitations = [
+        "Le nom Bluetooth est declare par l'appareil et peut etre modifie.",
+        "L'absence d'un appareil ne prouve pas son absence physique.",
+        "Aucun appairage ni connexion n'est realise.",
+    ]
+    if platform.system() == "Windows":
+        limitations.insert(
+            0,
+            "Windows expose surtout les appareils Bluetooth connus, appaires ou recemment vus ; "
+            "la vue exacte des Parametres n'est pas toujours disponible en ligne de commande.",
+        )
+    if shutil.which("termux-wifi-scaninfo") and not shutil.which("bluetoothctl"):
+        limitations.insert(
+            0,
+            "Android/Termux ne fournit pas toujours de commande Bluetooth universelle comparable aux Parametres.",
+        )
     return {
         "available": bool(process["available"]),
         "engine": engine,
         "description": "Appareils Bluetooth connus ou visibles selon le système.",
         "output": process["output"],
-        "items": items,
-        "limitations": [
-            "Le nom Bluetooth est déclaré par l'appareil et peut être modifié.",
-            "L'absence d'un appareil ne prouve pas son absence physique.",
-            "Aucun appairage ni connexion n'est réalisé.",
-        ],
+        "items": _normalize_bluetooth_items(items, live_scan),
+        "limitations": limitations,
     }
 
 
@@ -337,6 +354,94 @@ def _wifi_limitations() -> list[str]:
         "Un SSID ou BSSID ne permet pas d'identifier avec certitude une personne.",
         "Le Wi-Fi interne d'un téléphone ne fournit généralement pas le mode monitor à Termux.",
     ]
+
+
+def _normalize_wifi_networks(networks: list[dict[str, object]]) -> list[dict[str, object]]:
+    normalized: list[dict[str, object]] = []
+    for item in networks:
+        ssid = str(item.get("ssid") or "").strip()
+        try:
+            signal = int(item.get("signal") or -100)
+        except (TypeError, ValueError):
+            signal = -100
+        security = str(item.get("security") or "inconnu").strip()
+        channel = item.get("channel", "")
+        frequency = item.get("frequency", "")
+        normalized.append(
+            {
+                "name": ssid or "Reseau masque",
+                "ssid": ssid,
+                "bssid": str(item.get("bssid") or ""),
+                "status": "connecte" if item.get("connected") else "visible",
+                "signal": signal,
+                "strength": _signal_label(signal),
+                "channel": channel,
+                "frequency": frequency,
+                "band": _wifi_band(frequency, channel),
+                "security": security,
+                "privacy": _wifi_privacy(security),
+                "connected": bool(item.get("connected")),
+            }
+        )
+    return normalized
+
+
+def _normalize_bluetooth_items(
+    items: list[dict[str, str]],
+    live_scan: bool,
+) -> list[dict[str, str]]:
+    normalized = []
+    for item in items:
+        name = str(item.get("name") or "").strip()
+        identifier = str(item.get("identifier") or item.get("address") or "").strip()
+        normalized.append(
+            {
+                "name": name or "Appareil inconnu",
+                "identifier": identifier,
+                "status": str(item.get("status") or ("visible" if live_scan else "connu")),
+                "source": "scan visible" if live_scan else "inventaire systeme",
+            }
+        )
+    return normalized
+
+
+def _signal_label(signal: int) -> str:
+    if signal >= -50:
+        return "excellent"
+    if signal >= -65:
+        return "bon"
+    if signal >= -75:
+        return "moyen"
+    return "faible"
+
+
+def _wifi_band(frequency: object, channel: object) -> str:
+    try:
+        frequency_value = int(str(frequency).replace("MHz", "").strip())
+    except ValueError:
+        frequency_value = 0
+    if 2400 <= frequency_value < 2500:
+        return "2.4 GHz"
+    if 4900 <= frequency_value < 5925:
+        return "5 GHz"
+    if 5925 <= frequency_value < 7200:
+        return "6 GHz"
+    try:
+        channel_value = int(channel)
+    except (TypeError, ValueError):
+        return "inconnue"
+    if 1 <= channel_value <= 14:
+        return "2.4 GHz"
+    if channel_value >= 32:
+        return "5/6 GHz"
+    return "inconnue"
+
+
+def _wifi_privacy(security: str) -> str:
+    value = security.upper()
+    if not value or value in {"--", "OPEN", "OUVERT", "NONE"}:
+        return "ouvert"
+    return "securise"
 
 
 def _run(command: list[str], timeout: int = 20) -> dict[str, object]:
@@ -423,17 +528,29 @@ def _parse_netsh_scan(output: str) -> list[dict[str, object]]:
     networks: list[dict[str, object]] = []
     current_ssid = ""
     current_security = ""
+    current_encryption = ""
     current: dict[str, object] | None = None
     for raw_line in output.splitlines():
         line = raw_line.strip()
-        ssid = re.match(r"SSID\s+\d+\s*:\s*(.*)", line, re.IGNORECASE)
+        ssid = re.match(
+            r"(?:SSID\s+\d+|Nom\s+SSID|SSID\s+name|Network\s+name)\s*:\s*(.*)",
+            line,
+            re.IGNORECASE,
+        )
         if ssid:
             current_ssid = ssid.group(1).strip()
             current_security = ""
+            current_encryption = ""
             continue
         auth = re.match(r"(?:Authentication|Authentification)\s*:\s*(.*)", line, re.IGNORECASE)
         if auth:
             current_security = auth.group(1).strip()
+            continue
+        encryption = re.match(r"(?:Encryption|Chiffrement)\s*:\s*(.*)", line, re.IGNORECASE)
+        if encryption:
+            current_encryption = encryption.group(1).strip()
+            if current is not None:
+                current["security"] = _combine_security(current_security, current_encryption)
             continue
         bssid = re.match(r"BSSID\s+\d+\s*:\s*(.*)", line, re.IGNORECASE)
         if bssid:
@@ -443,7 +560,7 @@ def _parse_netsh_scan(output: str) -> list[dict[str, object]]:
                 "channel": "",
                 "frequency": "",
                 "signal": -100,
-                "security": current_security or "inconnu",
+                "security": _combine_security(current_security, current_encryption),
             }
             networks.append(current)
             continue
@@ -474,12 +591,20 @@ def _parse_netsh_interface(output: str) -> dict[str, object] | None:
         "channel": values.get("canal", values.get("channel", "")),
         "frequency": "",
         "signal": _signal_percent_to_dbm(signal),
-        "security": values.get(
-            "authentification",
-            values.get("authentication", "inconnu"),
+        "security": _combine_security(
+            values.get("authentification", values.get("authentication", "")),
+            values.get("chiffrement", values.get("encryption", "")),
         ),
         "connected": True,
     }
+
+
+def _combine_security(authentication: str, encryption: str) -> str:
+    auth = authentication.strip() or "inconnu"
+    cipher = encryption.strip()
+    if cipher and cipher.lower() not in auth.lower():
+        return f"{auth} / {cipher}"
+    return auth
 
 
 def _parse_windows_bluetooth(output: str) -> list[dict[str, str]]:
