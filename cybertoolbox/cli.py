@@ -1263,7 +1263,7 @@ def reconnaissance_menu() -> None:
     print_menu_item("2", "Scanner les ports d'une cible autorisée")
     print_menu_item("3", "Profiler un appareil autorisé")
     print_menu_item("4", "Profiler passivement un domaine public")
-    print_menu_item("5", "Inventaire d'exposition local, style Shodan")
+    print_menu_item("5", "Inventaire d'exposition local")
     print_menu_item("6", "Aide des ports connus")
     print_menu_item("7", "Profiler enrichi façon Watch Dogs")
     print_menu_item("0", "Retour")
@@ -2188,24 +2188,30 @@ def manage_settings() -> None:
         SETTINGS.report_mode = input("Rapports [ask/auto/off] : ").strip().lower()
     elif choice == "3":
         SETTINGS.theme = input(
-            "Thème GUI [violet/github/terminal/ocean/amber] : "
+            "Thème GUI [core/violet/github/terminal/ocean/amber] : "
         ).strip().lower()
     elif choice == "4":
-        SETTINGS.glass_effect = _ask_boolean("Activer l'effet verre dans la GUI")
+        SETTINGS.app_color_mode = input("Mode app [auto/dark/light] : ").strip().lower()
     elif choice == "5":
+        SETTINGS.map_color_mode = input("Mode carte [auto/day/night] : ").strip().lower()
+    elif choice == "6":
+        SETTINGS.glass_effect = _ask_boolean("Activer l'effet verre dans la GUI")
+    elif choice == "7":
+        SETTINGS.glass_opacity = float(input("Opacité du verre [0.15-0.95] : ").strip())
+    elif choice == "8":
         value = input(f"Ports par défaut [{SETTINGS.default_ports}] : ").strip()
         if value:
             parse_ports(value)
             SETTINGS.default_ports = value
-    elif choice == "6":
+    elif choice == "9":
         SETTINGS.prefer_nmap = _ask_boolean("Préférer Nmap lorsqu'il est disponible")
-    elif choice == "7":
+    elif choice == "10":
         SETTINGS.show_lessons = _ask_boolean("Afficher les explications pédagogiques")
-    elif choice == "8":
+    elif choice == "11":
         SETTINGS.internet_correlation = _ask_boolean(
             "Autoriser la corrélation DNS du nom de l'appareil"
         )
-    elif choice == "9":
+    elif choice == "12":
         SETTINGS.scan_timeout = float(input("Délai TCP en secondes [0.1-5] : ").strip())
     else:
         print("Choix invalide.")

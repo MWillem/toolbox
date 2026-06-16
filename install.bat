@@ -45,6 +45,16 @@ if exist ".venv\Scripts\python.exe" (
     if errorlevel 1 (
         echo L'ancien environnement virtuel est inutilisable. Reconstruction...
         rmdir /s /q ".venv"
+    ) else (
+        ".venv\Scripts\python.exe" -m pip --version >nul 2>&1
+        if errorlevel 1 (
+            echo L'environnement virtuel ne contient pas pip. Tentative de reparation...
+            ".venv\Scripts\python.exe" -m ensurepip --upgrade >nul 2>&1
+            if errorlevel 1 (
+                echo Reparation impossible. Reconstruction de l'environnement virtuel...
+                rmdir /s /q ".venv"
+            )
+        )
     )
 )
 

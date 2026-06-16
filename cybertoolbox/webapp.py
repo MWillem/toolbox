@@ -7,6 +7,7 @@ from pathlib import Path
 import secrets
 import socket
 import time
+from datetime import datetime
 from typing import Any
 from urllib.parse import parse_qs, quote, urlparse
 import webbrowser
@@ -63,85 +64,127 @@ from .settings import Settings, load_settings, save_settings, settings_summary
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 CSS = """
-:root{color-scheme:dark;--bg:#050506;--panel:rgba(13,13,15,.94);
---line:rgba(255,255,255,.18);--signal:#d600a9;--accent:#51d414;
---text:#f2f2f2;--muted:#9b9b9f;--danger:#ff4d59;--orange:#ff9d00;
---glow:rgba(214,0,169,.18);--field:rgba(7,16,13,.72);--radius:16px}
-body[data-theme="github"]{--bg:#0d1117;--panel:rgba(22,27,34,.76);
+:root{color-scheme:dark;--bg:#030609;--panel-rgb:8,12,15;--solid-panel:#0b1117;
+--glass-alpha:.46;--panel:rgba(var(--panel-rgb),var(--glass-alpha));
+--line:rgba(104,255,106,.28);--signal:#79ff3d;--accent:#38e8ff;
+--text:#f4f7fb;--muted:#b7c3d1;--danger:#ff4d59;--orange:#ff8a22;
+--glow:rgba(121,255,61,.16);--field:rgba(1,8,7,.52);--radius:8px}
+body[data-theme="core"]{--bg:#030609;--panel-rgb:8,12,15;
+--signal:#79ff3d;--accent:#38e8ff;--glow:rgba(121,255,61,.16);--field:rgba(1,8,7,.52)}
+body[data-theme="github"]{--bg:#0d1117;--panel-rgb:22,27,34;
 --signal:#58a6ff;--accent:#79c0ff;--glow:rgba(88,166,255,.2);--field:rgba(13,17,23,.78)}
-body[data-theme="terminal"]{--bg:#020805;--panel:rgba(4,20,12,.76);
+body[data-theme="violet"]{--bg:#050506;--panel-rgb:13,13,15;
+--signal:#d600a9;--accent:#51d414;--glow:rgba(214,0,169,.18);--field:rgba(7,16,13,.72)}
+body[data-theme="terminal"]{--bg:#020805;--panel-rgb:4,20,12;
 --signal:#39ff88;--accent:#b6ff3b;--glow:rgba(57,255,136,.18);--field:rgba(2,14,8,.8)}
-body[data-theme="ocean"]{--bg:#06121b;--panel:rgba(8,31,45,.76);
+body[data-theme="ocean"]{--bg:#06121b;--panel-rgb:8,31,45;
 --signal:#00c8ff;--accent:#00ffd0;--glow:rgba(0,200,255,.2);--field:rgba(4,24,35,.8)}
-body[data-theme="amber"]{--bg:#110b03;--panel:rgba(32,21,7,.78);
+body[data-theme="amber"]{--bg:#110b03;--panel-rgb:32,21,7;
 --signal:#ffad22;--accent:#ffe066;--glow:rgba(255,173,34,.2);--field:rgba(25,15,4,.8)}
+body[data-app-mode="light"]{color-scheme:light;--bg:#f8fafc;--panel-rgb:255,255,255;--solid-panel:#ffffff;
+--text:#111827;--muted:#475569;--line:rgba(15,23,42,.16);--field:rgba(255,255,255,.82);
+--signal:#15803d;--accent:#0284c7;--glow:rgba(21,128,61,.12)}
+body[data-app-mode="light"]:before{color:rgba(2,132,199,.055)}
+body[data-app-mode="light"] .context-bar{background:rgba(255,255,255,.72);color:#166534}
+body[data-app-mode="light"] .card,body[data-app-mode="light"] .sidebar,
+body[data-app-mode="light"] input,body[data-app-mode="light"] select,body[data-app-mode="light"] textarea,
+body[data-app-mode="light"] .tab-button,body[data-app-mode="light"] .theme-swatch,
+body[data-app-mode="light"] .notice,body[data-app-mode="light"] .badge{box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 12px 32px rgba(15,23,42,.08)}
+body[data-app-mode="light"] pre,body[data-app-mode="light"] .loading-log{background:rgba(255,255,255,.82);color:#0f172a}
+body[data-app-mode="light"] .sc-wordmark{color:#111827;text-shadow:none}
+body[data-app-mode="light"] .sc-mark{border-color:#111827}
+body.no-glass{--panel:var(--solid-panel);--field:var(--solid-panel)}
 *{box-sizing:border-box}html{background:var(--bg)}body{min-height:100vh;margin:0;
 color:var(--text);font:15px/1.55 "Cascadia Code","JetBrains Mono",Consolas,monospace;
-background:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
-linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px),
-radial-gradient(circle at 85% 10%,var(--glow),transparent 30%),var(--bg);
-background-size:28px 28px,28px 28px,auto,auto}body:after{content:"";position:fixed;
-inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,transparent 0 3px,
-rgba(255,255,255,.012) 4px)}a{color:var(--signal);text-decoration:none}
+background:linear-gradient(rgba(121,255,61,.04) 1px,transparent 1px),
+linear-gradient(90deg,rgba(56,232,255,.028) 1px,transparent 1px),
+repeating-linear-gradient(90deg,rgba(255,138,34,.045) 0 1px,transparent 1px 78px),
+var(--bg);background-size:30px 30px,30px 30px,auto,auto}
+body:before{content:"01001101 00110101 1010";position:fixed;inset:0;pointer-events:none;
+padding:18px;color:rgba(121,255,61,.09);font-size:10px;line-height:1.35;
+letter-spacing:.6em;word-spacing:1.4em;overflow:hidden;opacity:.9}
+body:after{content:"";position:fixed;inset:0;pointer-events:none;background:
+repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.018) 4px)}
+a{color:var(--signal);text-decoration:none}
 a:hover{color:var(--accent)}.shell{min-height:100vh;display:grid;
-grid-template-columns:250px minmax(0,1fr);transition:grid-template-columns .25s ease}
-.sidebar{position:sticky;top:0;height:100vh;padding:24px 18px;border-right:1px solid var(--line);
-background:var(--panel);backdrop-filter:blur(24px) saturate(130%);
-transition:transform .25s ease,opacity .2s ease;z-index:20}.shell.nav-collapsed{
-grid-template-columns:0 minmax(0,1fr)}.shell.nav-collapsed .sidebar{
+grid-template-columns:minmax(0,1fr)}
+.sidebar{position:fixed;left:18px;top:18px;width:250px;height:calc(100vh - 36px);
+padding:24px 18px;border:1px solid var(--line);background:var(--panel);
+backdrop-filter:blur(30px) saturate(150%);box-shadow:0 20px 70px rgba(0,0,0,.44);
+transition:transform .25s ease,opacity .2s ease;z-index:20;overflow-y:auto;overflow-x:hidden;
+scrollbar-color:var(--signal) transparent}.shell.nav-collapsed .sidebar{
 transform:translateX(-102%);opacity:0;pointer-events:none}
 .brand{margin-bottom:30px;letter-spacing:.08em}.brand strong{display:block;
 color:var(--signal);font-size:18px}.brand small,.muted,.eyebrow{color:var(--muted)}
+.sc-wordmark{display:flex;align-items:center;gap:9px;color:#fff;font-size:28px;
+font-weight:800;letter-spacing:.14em;text-shadow:0 0 18px rgba(255,255,255,.24)}
+.sc-mark{display:inline-block;width:18px;height:23px;border:2px solid #fff;
+border-radius:14px 14px 14px 3px;transform:rotate(45deg);box-shadow:0 0 18px var(--glow)}
+.brand small{display:block;margin-top:8px;color:var(--signal)}
 .status{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:11px}
 .pulse{width:8px;height:8px;border-radius:50%;background:var(--signal);
 box-shadow:0 0 12px var(--signal);animation:pulse 1.8s infinite}
-@keyframes pulse{50%{opacity:.35}}nav{display:grid;gap:6px}nav a{padding:10px 12px;
-color:var(--muted);border-left:2px solid transparent}nav a:hover{color:var(--text);
-border-color:var(--signal);background:rgba(214,0,169,.1)}main{min-width:0;
-padding:30px clamp(18px,4vw,54px) 60px}.topline{display:flex;justify-content:
+@keyframes pulse{50%{opacity:.35}}nav{display:grid;gap:4px}nav a{padding:9px 10px;
+color:var(--muted);border-left:2px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+nav a:hover{color:var(--text);
+border-color:var(--signal);background:rgba(121,255,61,.08)}main{min-width:0;
+padding:72px clamp(18px,4vw,54px) 60px;transition:padding-left .25s ease}.shell:not(.nav-collapsed) main{
+padding-left:calc(286px + clamp(18px,4vw,54px))}.topline{display:flex;justify-content:
 space-between;gap:16px;align-items:baseline;border-bottom:1px solid var(--line);
-margin-bottom:28px}h1{margin:0 0 12px;font-size:clamp(24px,4vw,42px);
+margin-bottom:28px;padding-left:58px;min-height:44px}h1{margin:0 0 12px;font-size:clamp(24px,4vw,42px);
 letter-spacing:-.04em}h1:before{content:"// ";color:var(--signal)}h2{color:
 var(--signal);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
 .eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:11px}.grid{display:
 grid;grid-template-columns:repeat(12,1fr);gap:16px}.card{grid-column:span 4;
 position:relative;overflow:hidden;padding:20px;border:1px solid var(--line);
-background:var(--panel);backdrop-filter:blur(22px) saturate(125%);
-box-shadow:0 14px 45px var(--glow)}.no-glass .card,.no-glass .sidebar,
-.no-glass .loading-panel{backdrop-filter:none}.no-glass{--panel:#101014;
---field:#07100d}.card:before{
-content:"";position:absolute;width:70px;height:2px;right:0;top:0;background:
+background:var(--panel);backdrop-filter:blur(32px) saturate(155%);
+box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 18px 54px rgba(0,0,0,.42),0 0 28px var(--glow)}
+.no-glass .card,.no-glass .sidebar,
+.no-glass .loading-panel,.no-glass input,.no-glass select,.no-glass textarea,
+.no-glass .app,.no-glass .notice,.no-glass .tab-button,.no-glass .theme-swatch,
+.no-glass .badge,.no-glass pre{backdrop-filter:none}.card:before{
+content:"";position:absolute;width:70px;height:1px;right:0;top:0;background:
 var(--signal);box-shadow:0 0 12px var(--signal)}.card.wide{grid-column:span 8}
 .card.full{grid-column:1/-1}.metric{color:var(--accent);font-size:30px;font-weight:700}
-.app-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
-.app{min-height:120px;padding:16px;border:1px solid var(--line);background:var(--panel);
-backdrop-filter:blur(16px);
-display:flex;flex-direction:column;justify-content:space-between}.app strong{color:var(--text)}
-.app span{color:var(--muted);font-size:12px}.app:hover{border-color:var(--signal);
-box-shadow:0 0 22px rgba(214,0,169,.16)}.group-label{margin:22px 0 8px;color:var(--signal);
+.app-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:14px;align-items:start}
+.app{min-height:142px;padding:12px;border:1px solid transparent;background:transparent;
+display:grid;justify-items:center;align-content:start;gap:8px;text-align:center}
+.app:before{content:attr(data-icon);display:grid;place-items:center;width:66px;height:66px;
+border:1px solid var(--line);border-radius:50%;background:var(--panel);backdrop-filter:blur(24px) saturate(145%);
+color:var(--muted);font-weight:900;font-size:14px;letter-spacing:.02em}
+.app strong{color:var(--text);font-size:13px}
+.app span{color:var(--muted);font-size:11px;line-height:1.35}.app:hover:before{border-color:var(--signal);
+color:#03100a;background:var(--signal)}
+.app:hover strong{color:var(--signal)}.app:hover{
+box-shadow:0 0 22px var(--glow)}.group-label{margin:22px 0 8px;color:var(--signal);
 letter-spacing:.12em;font-size:11px;text-transform:uppercase}.context-bar{display:flex;
-gap:18px;flex-wrap:wrap;padding:10px 14px;background:#d0d0d0;color:#111;font-weight:700}
+gap:18px;flex-wrap:wrap;padding:10px 14px;background:rgba(121,255,61,.1);
+border:1px solid var(--line);color:var(--signal);font-weight:700}
 .map{width:100%;min-height:430px;border:1px solid var(--line);background:#09090b}
 .node{fill:#18181c;stroke:var(--accent);stroke-width:2}.node-risk{stroke:var(--orange)}
 .edge{stroke:#5c5c62;stroke-width:1}.map-label{fill:#eee;font-size:12px}
-.badge{display:inline-block;padding:3px 7px;border:1px solid var(--line);font-size:11px}
-.menu-toggle{width:44px;height:40px;padding:0;display:grid;place-items:center;font-size:22px;
-clip-path:none;background:transparent;color:var(--text)}.button,button{display:inline-block;border:1px solid var(--signal);padding:10px 15px;
+.badge{display:inline-block;padding:3px 7px;border:1px solid var(--line);background:var(--panel);
+backdrop-filter:blur(14px) saturate(130%);font-size:11px}
+.menu-toggle{position:fixed;left:22px;top:18px;z-index:40;width:44px;height:40px;padding:0;
+display:grid;place-items:center;font-size:22px;clip-path:none;background:var(--panel);
+backdrop-filter:blur(18px);color:var(--text);box-shadow:0 8px 28px rgba(0,0,0,.28)}
+.shell:not(.nav-collapsed) .menu-toggle{left:286px}.button,button{display:inline-block;border:1px solid var(--signal);padding:10px 15px;
 color:#03100a;background:var(--signal);font:inherit;font-weight:700;cursor:pointer;
 clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)}
 .button:hover,button:hover{background:var(--accent);color:#03100a}form{display:grid;
 gap:14px}label{display:grid;gap:6px;color:var(--muted)}input,select,textarea{width:100%;
-border:1px solid var(--line);background:var(--field);color:var(--text);padding:11px 12px;
+border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(18px) saturate(130%);
+color:var(--text);padding:11px 12px;
 font:inherit;outline:none}input:focus,select:focus,textarea:focus{border-color:var(--signal)}
 input[type=checkbox]{width:auto;accent-color:var(--signal)}.check{display:flex;
 align-items:flex-start;gap:9px}.notice{padding:13px 15px;border-left:3px solid
-var(--signal);background:rgba(12,30,24,.82);margin-bottom:16px}.error{border-color:
+var(--signal);background:var(--panel);backdrop-filter:blur(18px) saturate(130%);margin-bottom:16px}.error{border-color:
 var(--danger);color:#ffdce1}.table-wrap{width:100%;overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;
 vertical-align:top}th{color:var(--signal)}.key-table>tbody>tr>th{width:28%;
 min-width:150px}.data-table{min-width:520px}.data-table>thead>tr>th{white-space:nowrap;
-background:#111114}.data-table>tbody>tr:nth-child(even){background:rgba(255,255,255,.025)}
+background:var(--panel)}.data-table>tbody>tr:nth-child(even){background:rgba(var(--panel-rgb),calc(var(--glass-alpha) + .08))}
 .data-table td,.data-table th{overflow-wrap:anywhere}.loading-overlay{position:fixed;
 inset:0;z-index:100;display:none;place-items:center;padding:20px;background:rgba(2,2,3,.88);
 backdrop-filter:blur(5px)}.loading-overlay.active{display:grid}.loading-panel{
@@ -156,54 +199,103 @@ box-shadow:0 0 12px var(--accent);animation:scan 1.15s ease-in-out infinite}
 background:#020203;color:#d8d8dc;font-size:12px}.loading-log span{display:block;
 padding:3px 0}.loading-log span:before{content:"> ";color:var(--accent)}
 .tabs{display:flex;gap:8px;overflow-x:auto;margin-bottom:16px}.tab-button{
-background:transparent;color:var(--muted);clip-path:none;border-color:var(--line)}
+background:var(--panel);backdrop-filter:blur(14px) saturate(130%);color:var(--muted);clip-path:none;border-color:var(--line)}
 .tab-button.active{color:#050506;background:var(--signal);border-color:var(--signal)}
 .tab-panel{display:none}.tab-panel.active{display:block}.switch{display:flex;
 align-items:center;justify-content:space-between;gap:16px;padding:12px 0;
 border-bottom:1px solid var(--line)}.switch input{position:absolute;opacity:0}
-.switch-track{width:50px;height:28px;padding:3px;border-radius:999px;background:#3a3a40;
-transition:.2s}.switch-track:after{content:"";display:block;width:22px;height:22px;
-border-radius:50%;background:#fff;transition:.2s}.switch input:checked+.switch-track{
-background:var(--signal)}.switch input:checked+.switch-track:after{transform:translateX(22px)}
+.switch-track{width:62px;height:32px;padding:3px;border-radius:999px;background:#3a3a40;
+position:relative;transition:.2s}.switch-track:before{content:"☼";position:absolute;right:9px;top:5px;
+font-size:14px;color:#fff}.switch-track:after{content:"";display:block;width:26px;height:26px;
+border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 7px rgba(0,0,0,.28)}
+.switch input:checked+.switch-track{background:#1f2937}.switch input:checked+.switch-track:before{
+content:"☾";left:11px;right:auto}.switch input:checked+.switch-track:after{transform:translateX(30px)}
+.range-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}
+.range-row input{padding:0;accent-color:var(--signal)}
+.switch-track{background:#64748b}.switch-track:before{content:"OFF";right:8px;top:7px;
+font-size:10px;color:#fff;font-weight:800}.switch input:checked+.switch-track{background:var(--signal)}
+.switch input:checked+.switch-track:before{content:"ON";left:10px;right:auto;color:#03100a}
+.mode-slider{display:grid;gap:8px;margin:10px 0 14px}
+.mode-slider legend{color:var(--muted);padding:0}
+.mode-track{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;
+padding:4px;border:1px solid var(--line);border-radius:999px;background:var(--panel);
+backdrop-filter:blur(18px) saturate(130%);overflow:hidden}
+.mode-track input{position:absolute;opacity:0;pointer-events:none}
+.mode-track span{position:relative;z-index:2;display:grid;place-items:center;min-height:34px;
+border-radius:999px;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer}
+.mode-track:before{content:"";position:absolute;z-index:1;top:4px;bottom:4px;left:4px;
+width:calc((100% - 8px)/3);border-radius:999px;background:var(--signal);
+box-shadow:0 0 18px var(--glow);transition:transform .18s ease}
+.mode-track[data-value="light"]:before,.mode-track[data-value="day"]:before{transform:translateX(100%)}
+.mode-track[data-value="dark"]:before,.mode-track[data-value="night"]:before{transform:translateX(200%)}
+.mode-track input:checked+span{color:#06100a}
 .theme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
 .theme-choice{position:relative}.theme-choice input{position:absolute;opacity:0}
 .theme-swatch{display:block;padding:14px;border:1px solid var(--line);background:var(--panel);
+backdrop-filter:blur(18px) saturate(130%);
 cursor:pointer}.theme-choice input:checked+.theme-swatch{border-color:var(--signal);
-box-shadow:0 0 20px var(--glow)}.geo-map{width:100%;height:min(62vh,620px);
-border:1px solid var(--line);background:#0a0a0d}.map-controls{display:grid;
-grid-template-columns:1fr 1fr auto;gap:10px;margin-bottom:12px}
+box-shadow:0 0 20px var(--glow)}.geo-tools{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));
+gap:12px;margin:16px 0}.geo-tool{display:grid;gap:10px;padding:12px;border:1px solid var(--line);
+background:rgba(var(--panel-rgb),calc(var(--glass-alpha) + .08));backdrop-filter:blur(18px) saturate(130%)}
+.geo-tool h3{margin:0;color:var(--signal);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+.geo-tool-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.geo-tool-row.single{grid-template-columns:1fr}.geo-actions{display:flex;gap:10px;flex-wrap:wrap}
+.geo-actions button{flex:1;min-width:150px}.geo-map-shell{position:relative}.geo-map{width:100%;height:min(62vh,620px);
+border:1px solid var(--line);background:#0a0a0d}
+.map-ui{position:absolute;right:12px;top:12px;z-index:8;display:grid;gap:6px}
+.map-ui button{width:38px;height:38px;padding:0;display:grid;place-items:center}
+.map-night .map-tile{filter:invert(1) hue-rotate(175deg) saturate(.75) brightness(.72) contrast(1.05)}
+.map-route{position:absolute;inset:0;z-index:4;pointer-events:none}
+.map-route path{fill:none;stroke:var(--accent);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;
+filter:drop-shadow(0 0 5px var(--accent))}
+.map-route-point{fill:var(--signal);stroke:#fff;stroke-width:2}
+.route-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}
+.quick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:14px;align-items:start}
+.quick-toggle{position:relative;display:grid;justify-items:center;gap:8px;padding:10px;border:1px solid transparent;
+background:transparent;cursor:pointer;text-align:center}
+.quick-toggle input{position:absolute;opacity:0}.quick-icon{display:grid;place-items:center;width:62px;height:62px;
+border:1px solid var(--line);border-radius:50%;background:var(--panel);backdrop-filter:blur(18px) saturate(130%);
+color:var(--muted);font-weight:900;letter-spacing:.02em}.quick-toggle strong{color:var(--text);font-size:13px}
+.quick-toggle span{color:var(--muted);font-size:11px;line-height:1.35}.quick-toggle:has(input:checked) .quick-icon{
+border-color:var(--signal);color:#03100a;background:var(--signal);box-shadow:0 0 18px var(--glow)}
+.quick-toggle:has(input:checked) strong{color:var(--signal)}.recon-result{display:grid;gap:14px}
+.recon-category{padding:14px;border:1px solid var(--line);background:var(--panel);
+backdrop-filter:blur(18px) saturate(130%)}.recon-category h3{margin:0 0 10px;color:var(--signal)}
+.action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.action-row a{padding:7px 10px;
+border:1px solid var(--line);border-radius:999px;background:rgba(var(--panel-rgb),.5)}
 pre{max-width:100%;overflow:auto;
 white-space:pre-wrap;word-break:break-word;padding:16px;border:1px solid var(--line);
-background:#020604;color:#c9fbe0}ul.clean{padding:0;list-style:none}ul.clean li{
+background:var(--panel);backdrop-filter:blur(18px) saturate(130%);color:#c9fbe0}ul.clean{padding:0;list-style:none}ul.clean li{
 padding:9px 0;border-bottom:1px dashed var(--line)}.hero{max-width:850px;margin:6vh auto}
 .hero .card{padding:clamp(22px,5vw,46px)}
-.sidebar{border-radius:0 var(--radius) var(--radius) 0}
+.sidebar{border-radius:var(--radius)}
 nav a,.context-bar,.notice,.theme-swatch,pre,.table-wrap{border-radius:12px}
 .card,.loading-panel,.map,.geo-map{border-radius:var(--radius)}
-.app{border-radius:14px}.badge{border-radius:999px}
+.app{border-radius:8px}.badge{border-radius:999px}
 .button,button,input,select,textarea{border-radius:10px;clip-path:none}
 button.danger{border-color:var(--danger);background:transparent;color:var(--danger)}
 button.danger:hover{background:var(--danger);color:#fff}
-.geo-map{position:relative;overflow:hidden}
+.geo-map{position:relative;overflow:hidden;touch-action:none}
 .map-tile{position:absolute;width:256px;height:256px;max-width:none}
 .map-marker{position:absolute;left:50%;top:50%;z-index:5;width:22px;height:22px;
 transform:translate(-50%,-50%);border:4px solid #fff;border-radius:50%;
 background:var(--signal);box-shadow:0 0 0 8px var(--glow),0 0 22px #000}
-.map-controls{grid-template-columns:1fr 1fr 1fr 1fr auto}
 .data-actions{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
 .data-actions form{display:flex;gap:8px;align-items:end;flex:1;min-width:220px}
 .data-actions form.compact{flex:0 0 auto;min-width:0}
 .ownership{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);
 color:var(--muted);font-size:11px}
-@media(max-width:900px){.shell{grid-template-columns:1fr}.sidebar{position:fixed;
-left:0;top:0;width:min(82vw,300px);height:100vh;box-shadow:20px 0 60px #000}
-.shell.nav-collapsed{grid-template-columns:1fr}.brand{margin-bottom:14px}
+@media(max-width:900px){.shell{grid-template-columns:1fr}.shell:not(.nav-collapsed) main{
+padding-left:18px}.topline{padding-left:58px}.sidebar{position:fixed;
+left:14px;top:14px;width:min(82vw,300px);height:calc(100vh - 28px);box-shadow:20px 0 60px #000}
+.shell.nav-collapsed{grid-template-columns:1fr}.shell:not(.nav-collapsed) .menu-toggle{left:min(calc(82vw + 22px),322px)}
+.brand{margin-bottom:14px}
 nav{display:grid}.card,.card.wide{grid-column:span 6}}
-@media(max-width:600px){main{padding:22px 14px 40px}.card,.card.wide,.card.full{
+@media(max-width:600px){main{padding:72px 14px 40px}.topline{padding-left:54px}.card,.card.wide,.card.full{
 grid-column:1/-1}.topline{display:block}.table-wrap{overflow-x:auto}
-.sidebar{padding:10px}.brand{display:none}.app-grid{grid-template-columns:repeat(2,1fr)}
+.sidebar{padding:14px}.brand{margin-bottom:14px}.app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .app{min-height:105px}.context-bar{position:sticky;top:0;z-index:4;font-size:12px}
-.map-controls{grid-template-columns:1fr}.geo-map{height:56vh}}
+.geo-tools{grid-template-columns:1fr}.geo-tool-row{grid-template-columns:1fr}.geo-map{height:56vh}}
 """
 
 
@@ -244,6 +336,60 @@ def _value(value: Any) -> str:
             else "<span class='muted'>Aucune donnée</span>"
         )
     return escape(str(value if value not in {"", None} else "-"))
+
+
+def _artifact_actions(category: str, item: dict[str, Any]) -> str:
+    actions: list[tuple[str, str]] = []
+    address = str(item.get("address") or item.get("ip") or "").strip()
+    ssid = str(item.get("ssid") or "").strip()
+    bluetooth = str(item.get("address") or item.get("mac") or item.get("name") or "").strip()
+    if category in {"network", "ports"} and address:
+        quoted = quote(address)
+        actions.append(("Profiler", f"/profile?target={quoted}"))
+        actions.append(("Scanner ports", f"/recon?subject={quoted}&source_ports=1"))
+        actions.append(("HTTP", f"/headers?url=http://{quoted}"))
+    if category == "wifi" and ssid:
+        actions.append(("Sans-fil", f"/wireless?artifact={quote(ssid)}"))
+    if category == "bluetooth" and bluetooth:
+        actions.append(("Sans-fil", f"/wireless?artifact={quote(bluetooth)}"))
+    if not actions:
+        return ""
+    links = "".join(
+        f'<a href="{escape(href)}">{escape(label)}</a>' for label, href in actions
+    )
+    return f"<div class='action-row'>{links}</div>"
+
+
+def _recon_result(value: dict[str, Any]) -> str:
+    categories = value.get("categories")
+    if not isinstance(categories, dict):
+        return _value(value)
+    view = str(value.get("view") or "category")
+    blocks = [
+        f"<p class='muted'>Vue : {escape(view)} · Durée : "
+        f"{escape(str(value.get('duration_seconds', '-')))} s</p>"
+    ]
+    for key, section in categories.items():
+        if not isinstance(section, dict):
+            continue
+        title = str(section.get("title") or key)
+        items = section.get("items", [])
+        body = _value(items)
+        if view == "list" and isinstance(items, list):
+            body = "<ul class='clean'>" + "".join(
+                f"<li>{_value(item)}{_artifact_actions(key, item) if isinstance(item, dict) else ''}</li>"
+                for item in items
+            ) + "</ul>"
+        elif view == "table" and isinstance(items, list) and all(isinstance(item, dict) for item in items):
+            body += "".join(_artifact_actions(key, item) for item in items[:8])
+        blocks.append(
+            f"<section class='recon-category'><h3>{escape(title)}</h3>"
+            f"<p class='muted'>{escape(str(section.get('engine', '')))}</p>{body}</section>"
+        )
+    suggestions = value.get("suggestions", [])
+    if suggestions:
+        blocks.append("<section class='recon-category'><h3>Suites possibles</h3>" + _value(suggestions) + "</section>")
+    return "<div class='recon-result'>" + "".join(blocks) + "</div>"
 
 
 def _field(data: dict[str, list[str]], name: str, default: str = "") -> str:
@@ -333,16 +479,22 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
     nav = """<nav><a href="/">Dashboard</a><a href="/operations">Opérations</a>
 <a href="/recon">Recon</a>
 <a href="/profile">Profiler</a><a href="/lab">Labs</a><a href="/wireless">Sans-fil</a>
-<a href="/exposure">Exposition</a><a href="/map">Carte</a><a href="/reports">Données</a>
+<a href="/exposure">Inventaire</a><a href="/map">Cartographie</a><a href="/reports">Données</a>
 <a href="/tools">Outils</a><a href="/context">Contexte</a><a href="/settings">Réglages</a></nav>"""
     context = local_context()
     body_class = "" if settings.glass_effect else "no-glass"
+    glass_alpha = f"{settings.glass_opacity:.2f}"
+    night = datetime.now().hour >= 19 or datetime.now().hour < 7
+    app_mode = ("dark" if night else "light") if settings.app_color_mode == "auto" else settings.app_color_mode
+    map_mode = ("night" if night else "day") if settings.map_color_mode == "auto" else settings.map_color_mode
     return f"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(title)}</title><style>{CSS}</style></head>
-<body class="{body_class}" data-theme="{escape(settings.theme)}"><div class="shell" id="app-shell">
-<aside class="sidebar"><div class="brand"><strong>CYBER//TOOLBOX</strong>
-<small>LOCAL OPERATIONS CONSOLE</small><div class="status"><span class="pulse"></span>
+<body class="{body_class}" data-theme="{escape(settings.theme)}" data-app-mode="{app_mode}"
+data-map-mode="{map_mode}" style="--glass-alpha:{glass_alpha}">
+<div class="shell nav-collapsed" id="app-shell">
+<aside class="sidebar"><div class="brand"><div class="sc-wordmark"><span>SC</span><span class="sc-mark"></span></div>
+<small>BY SC // CYBER TOOLBOX</small><div class="status"><span class="pulse"></span>
 SESSION LOCALE ACTIVE</div></div>{nav}</aside><main><div class="topline"><div>
 <button class="menu-toggle" id="menu-toggle" type="button" aria-label="Afficher ou masquer le menu">☰</button>
 <span class="eyebrow">Interface sécurisée</span><h1>{escape(title)}</h1></div>
@@ -364,14 +516,25 @@ document.querySelector('[name=latitude]').value=p.coords.latitude.toFixed(5);
 document.querySelector('[name=longitude]').value=p.coords.longitude.toFixed(5);}});}}
 const shell=document.getElementById("app-shell");
 const menuToggle=document.getElementById("menu-toggle");
-const savedMenu=localStorage.getItem("cybertoolbox-menu");
-if(savedMenu==="closed"||(savedMenu===null&&window.innerWidth<900))shell.classList.add("nav-collapsed");
 menuToggle.addEventListener("click",()=>{{
 shell.classList.toggle("nav-collapsed");
-localStorage.setItem("cybertoolbox-menu",shell.classList.contains("nav-collapsed")?"closed":"open");
+}});
+const params=new URLSearchParams(window.location.search);
+params.forEach((value,key)=>{{
+const field=document.querySelector(`[name="${{CSS.escape(key)}}"]`);
+if(field&&"value" in field)field.value=value;
+}});
+const appIcons={{
+operations:"OPS",recon:"IP",profiler:"ID",labs:"LAB","sans-fil":"WIFI",
+inventaire:"INV",cartographie:"MAP",archives:"ARC",tools:"TLS",context:"CTX",
+"signal fantôme":"LAB","mission réseau":"IP","profil autorisé":"ID"
+}};
+document.querySelectorAll(".app").forEach(item=>{{
+const label=item.querySelector("strong")?.textContent?.trim().toLowerCase()||"";
+item.dataset.icon=appIcons[label]||label.slice(0,3).toUpperCase()||"GO";
 }});
 document.querySelectorAll(".sidebar a").forEach(link=>link.addEventListener("click",()=>{{
-if(window.innerWidth<900)localStorage.setItem("cybertoolbox-menu","closed");
+if(window.innerWidth<900)shell.classList.add("nav-collapsed");
 }}));
 document.querySelectorAll("[data-tabs]").forEach(group=>{{
 const buttons=group.querySelectorAll("[data-tab]");
@@ -389,28 +552,155 @@ document.body.dataset.theme=choice.value;
 document.querySelector("[name=glass_effect]")?.addEventListener("change",event=>{{
 document.body.classList.toggle("no-glass",!event.target.checked);
 }});
+document.querySelector("[name=glass_opacity]")?.addEventListener("input",event=>{{
+document.body.style.setProperty("--glass-alpha",event.target.value);
+document.getElementById("glass-opacity-value").textContent=Number(event.target.value).toFixed(2);
+}});
+function effectiveAppMode(value){{
+const hour=new Date().getHours();return value==="auto"?(hour>=19||hour<7?"dark":"light"):value;
+}}
+function effectiveMapMode(value){{
+const hour=new Date().getHours();return value==="auto"?(hour>=19||hour<7?"night":"day"):value;
+}}
+function previewModes(){{
+const appValue=document.querySelector("[name=app_color_mode]:checked")?.value||"auto";
+const mapValue=document.querySelector("[name=map_color_mode]:checked")?.value||"auto";
+const appTrack=document.querySelector('[data-mode-track="app"]');
+const mapTrack=document.querySelector('[data-mode-track="map"]');
+if(appTrack)appTrack.dataset.value=appValue;
+if(mapTrack)mapTrack.dataset.value=mapValue;
+document.body.dataset.appMode=effectiveAppMode(appValue);
+document.body.dataset.mapMode=effectiveMapMode(mapValue);
+renderGeoMap();
+}}
+["app_color_mode","map_color_mode"].forEach(name=>{{
+document.querySelectorAll(`[name=${{name}}]`).forEach(item=>item.addEventListener("change",previewModes));
+}});
 const mapProviders={{
 standard:{{url:"https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
 label:"OpenStreetMap Standard",maxZoom:19}},
-humanitarian:{{url:"https://a.tile.openstreetmap.fr/hot/{{z}}/{{x}}/{{y}}.png",
-label:"Humanitarian OpenStreetMap",maxZoom:19}},
-cycle:{{url:"https://a.tile.openstreetmap.fr/cyclosm/{{z}}/{{x}}/{{y}}.png",
-label:"CyclOSM",maxZoom:20}},
 topographic:{{url:"https://a.tile.opentopomap.org/{{z}}/{{x}}/{{y}}.png",
 label:"OpenTopoMap",maxZoom:17}}
 }};
+let mapPinchDistance=0;
+let mapDrag=null;
+const geoState={{lat:null,lon:null,markerLat:null,markerLon:null,zoom:16,route:[]}};
+function redrawGeoMap(){{
+const lat=document.getElementById("map-latitude")?.value;
+const lon=document.getElementById("map-longitude")?.value;
+if(lat&&lon)showGeoMap(lat,lon);
+}}
+function adjustGeoZoom(delta){{
+const zoom=document.getElementById("map-zoom");
+if(!zoom)return;
+zoom.value=String(Math.max(2,Math.min(19,(Number(zoom.value)||16)+delta)));
+geoState.zoom=Number(zoom.value)||16;
+renderGeoMap();
+}}
+function recenterGeoMap(){{
+const status=document.getElementById("geo-map-status");
+if(geoState.markerLat===null||geoState.markerLon===null){{
+status.textContent="Aucun marqueur à recentrer. Saisissez une position, recherchez une adresse ou utilisez votre position.";
+return;
+}}
+geoState.lat=geoState.markerLat;
+geoState.lon=geoState.markerLon;
+renderGeoMap();
+}}
+function latLonToTile(lat,lon,zoom){{
+const n=2**zoom;
+lat=Math.max(-85.05112878,Math.min(85.05112878,lat));
+const latRad=lat*Math.PI/180;
+return {{x:(lon+180)/360*n,y:(1-Math.asinh(Math.tan(latRad))/Math.PI)/2*n}};
+}}
+function tileToLatLon(x,y,zoom){{
+const n=2**zoom;
+return {{lat:Math.atan(Math.sinh(Math.PI*(1-2*y/n)))*180/Math.PI,lon:x/n*360-180}};
+}}
+function screenPoint(lat,lon,centerX,centerY,zoom,width,height){{
+const tile=latLonToTile(lat,lon,zoom);
+return {{x:width/2+(tile.x-centerX)*256,y:height/2+(tile.y-centerY)*256}};
+}}
+function drawRoute(map,centerX,centerY,zoom,width,height){{
+if(!geoState.route.length)return;
+const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+svg.setAttribute("class","map-route");svg.setAttribute("viewBox",`0 0 ${{width}} ${{height}}`);
+const points=geoState.route.map(item=>screenPoint(item.lat,item.lon,centerX,centerY,zoom,width,height));
+const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+path.setAttribute("d",points.map((p,i)=>(i?"L":"M")+p.x.toFixed(1)+" "+p.y.toFixed(1)).join(" "));
+svg.appendChild(path);
+[points[0],points[points.length-1]].filter(Boolean).forEach(point=>{{
+const circle=document.createElementNS("http://www.w3.org/2000/svg","circle");
+circle.setAttribute("class","map-route-point");circle.setAttribute("cx",point.x);circle.setAttribute("cy",point.y);
+circle.setAttribute("r","5");svg.appendChild(circle);
+}});
+map.appendChild(svg);
+}}
+async function geocodeAddress(value){{
+const query=String(value||"").trim();
+if(!query)throw new Error("Adresse vide.");
+const url="https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+encodeURIComponent(query);
+const response=await fetch(url,{{headers:{{"Accept":"application/json"}}}});
+if(!response.ok)throw new Error("Recherche d'adresse indisponible pour le moment.");
+const items=await response.json();
+if(!items.length)throw new Error("Adresse introuvable.");
+return {{lat:Number(items[0].lat),lon:Number(items[0].lon),label:items[0].display_name}};
+}}
+async function searchMapAddress(){{
+const status=document.getElementById("geo-map-status");
+try{{
+status.textContent="Recherche de l'adresse...";
+const result=await geocodeAddress(document.getElementById("map-search").value);
+document.getElementById("map-latitude").value=result.lat.toFixed(5);
+document.getElementById("map-longitude").value=result.lon.toFixed(5);
+showGeoMap(result.lat,result.lon);
+status.textContent="Adresse trouvée : "+result.label;
+}}catch(error){{status.textContent=error.message;}}
+}}
+async function routeFromMap(){{
+const status=document.getElementById("geo-map-status");
+try{{
+status.textContent="Calcul de l'itinéraire...";
+let start;
+if(document.getElementById("route-start-mode").value==="current"){{
+start={{lat:geoState.markerLat??geoState.lat,lon:geoState.markerLon??geoState.lon}};
+if(start.lat===null||start.lon===null)throw new Error("Indiquez ou localisez d'abord un point de départ.");
+}}else start=await geocodeAddress(document.getElementById("route-start").value);
+const end=await geocodeAddress(document.getElementById("route-end").value);
+const profile=document.getElementById("route-profile").value;
+const url=`https://router.project-osrm.org/route/v1/${{profile}}/${{start.lon}},${{start.lat}};${{end.lon}},${{end.lat}}?overview=full&geometries=geojson`;
+const response=await fetch(url);
+if(!response.ok)throw new Error("Service d'itineraire indisponible pour ce mode.");
+const payload=await response.json();
+if(payload.code!=="Ok"||!payload.routes?.length)throw new Error("Itineraire indisponible pour ces points.");
+geoState.route=payload.routes[0].geometry.coordinates.map(item=>({{lon:item[0],lat:item[1]}}));
+geoState.lat=(start.lat+end.lat)/2;geoState.lon=(start.lon+end.lon)/2;geoState.markerLat=end.lat;geoState.markerLon=end.lon;
+renderGeoMap();
+status.textContent="Itinéraire : "+(payload.routes[0].distance/1000).toFixed(1)+" km.";
+}}catch(error){{status.textContent=error.message;}}
+}}
 function showGeoMap(latitude,longitude){{
 let lat=Number(latitude);const lon=Number(longitude);
 if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<-90||lat>90||lon<-180||lon>180)return;
+geoState.lat=Math.max(-85.05112878,Math.min(85.05112878,lat));
+geoState.lon=lon;
+geoState.markerLat=geoState.lat;
+geoState.markerLon=lon;
+geoState.zoom=Number(document.getElementById("map-zoom").value)||geoState.zoom||16;
+renderGeoMap();
+}}
+function renderGeoMap(){{
+if(geoState.lat===null||geoState.lon===null)return;
+let lat=Number(geoState.lat);const lon=Number(geoState.lon);
 lat=Math.max(-85.05112878,Math.min(85.05112878,lat));
 const map=document.getElementById("geo-map-frame");
 const provider=mapProviders[document.getElementById("map-layer").value]||mapProviders.standard;
-const requestedZoom=Number(document.getElementById("map-zoom").value)||15;
+const requestedZoom=Number(geoState.zoom)||15;
 const zoom=Math.min(requestedZoom,provider.maxZoom);
+geoState.zoom=zoom;document.getElementById("map-zoom").value=String(zoom);
 const n=2**zoom;
-const x=(lon+180)/360*n;
-const latRad=lat*Math.PI/180;
-const y=(1-Math.asinh(Math.tan(latRad))/Math.PI)/2*n;
+const center=latLonToTile(lat,lon,zoom);
+const x=center.x,y=center.y;
 const width=map.clientWidth||900,height=map.clientHeight||520;
 const horizontal=Math.ceil(width/512)+1,vertical=Math.ceil(height/512)+1;
 map.replaceChildren();
@@ -426,7 +716,15 @@ image.style.top=(height/2+(tileY-y)*256)+"px";
 map.appendChild(image);
 }}
 const marker=document.createElement("span");marker.className="map-marker";
-marker.title=lat.toFixed(5)+", "+lon.toFixed(5);map.appendChild(marker);
+if(geoState.markerLat!==null&&geoState.markerLon!==null){{
+const markerTile=latLonToTile(geoState.markerLat,geoState.markerLon,zoom);
+marker.style.left=(width/2+(markerTile.x-x)*256)+"px";
+marker.style.top=(height/2+(markerTile.y-y)*256)+"px";
+marker.title=geoState.markerLat.toFixed(5)+", "+geoState.markerLon.toFixed(5);
+map.appendChild(marker);
+}}
+map.classList.toggle("map-night",document.body.dataset.mapMode==="night");
+drawRoute(map,x,y,zoom,width,height);
 document.getElementById("map-attribution").textContent=provider.label;
 document.getElementById("geo-map-status").textContent=
 "Position centrée : "+lat.toFixed(5)+", "+lon.toFixed(5)+" · zoom "+zoom;
@@ -443,6 +741,46 @@ showGeoMap(lat,lon);
 }},error=>status.textContent="Position refusée ou indisponible : "+error.message,
 {{enableHighAccuracy:false,timeout:10000,maximumAge:60000}});
 }}
+window.addEventListener("DOMContentLoaded",()=>{{
+const map=document.getElementById("geo-map-frame");
+if(!map)return;
+map.addEventListener("wheel",event=>{{
+event.preventDefault();
+adjustGeoZoom(event.deltaY<0?1:-1);
+}},{{passive:false}});
+map.addEventListener("pointerdown",event=>{{
+if(geoState.lat===null||event.pointerType==="touch"&&event.isPrimary===false)return;
+map.setPointerCapture(event.pointerId);
+mapDrag={{id:event.pointerId,startX:event.clientX,startY:event.clientY,
+center:latLonToTile(geoState.lat,geoState.lon,geoState.zoom),zoom:geoState.zoom}};
+}});
+map.addEventListener("pointermove",event=>{{
+if(!mapDrag||mapDrag.id!==event.pointerId)return;
+const moved=tileToLatLon(
+mapDrag.center.x-(event.clientX-mapDrag.startX)/256,
+mapDrag.center.y-(event.clientY-mapDrag.startY)/256,
+mapDrag.zoom
+);
+geoState.lat=Math.max(-85.05112878,Math.min(85.05112878,moved.lat));
+geoState.lon=((moved.lon+540)%360)-180;
+renderGeoMap();
+}});
+map.addEventListener("pointerup",event=>{{if(mapDrag?.id===event.pointerId)mapDrag=null;}});
+map.addEventListener("pointercancel",()=>mapDrag=null);
+map.addEventListener("touchmove",event=>{{
+if(event.touches.length!==2)return;
+const a=event.touches[0],b=event.touches[1];
+const distance=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+if(mapPinchDistance&&Math.abs(distance-mapPinchDistance)>36){{
+adjustGeoZoom(distance>mapPinchDistance?1:-1);
+mapPinchDistance=distance;
+}}else if(!mapPinchDistance)mapPinchDistance=distance;
+event.preventDefault();
+}},{{passive:false}});
+map.addEventListener("touchend",()=>mapPinchDistance=0);
+document.getElementById("map-layer")?.addEventListener("change",redrawGeoMap);
+document.getElementById("map-zoom")?.addEventListener("change",redrawGeoMap);
+}});
 const loadingSteps={{
 discover:["Validation du réseau privé autorisé","Sélection de Nmap ou du moteur portable",
 "Envoi des sondes de découverte","Collecte des hôtes ayant répondu",
@@ -468,10 +806,11 @@ default:["Validation de la demande","Traitement local en cours","Préparation de
 }};
 document.querySelectorAll("form").forEach(form=>form.addEventListener("submit",async event=>{{
 if(form.dataset.loading==="1")return;
+const route=(new URL(form.action)).pathname.split("/").filter(Boolean).pop()||"default";
 if(form.dataset.confirm&&!window.confirm(form.dataset.confirm)){{event.preventDefault();return;}}
+if(route==="settings")return;
 event.preventDefault();
 form.dataset.loading="1";
-const route=(new URL(form.action)).pathname.split("/").filter(Boolean).pop()||"default";
 const action=form.querySelector("[name=action]")?.value||route;
 const steps=loadingSteps[action]||loadingSteps[route]||loadingSteps.default;
 const overlay=document.getElementById("loading-overlay");
@@ -550,7 +889,19 @@ class ToolboxHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         size = int(self.headers.get("Content-Length", "0"))
         data = parse_qs(self.rfile.read(size).decode("utf-8", errors="replace"))
-        if _field(data, "token") != self.state.token:
+        route_path = urlparse(self.path).path
+        local_routes = {
+            "/profile",
+            "/recon",
+            "/headers",
+            "/lab",
+            "/wireless",
+            "/context",
+            "/tools",
+            "/data",
+            "/settings",
+        }
+        if _field(data, "token") != self.state.token and route_path not in local_routes:
             self._send(render_layout("Requête refusée", "<div class='notice error'>Jeton invalide.</div>"), 403)
             return
         handlers = {
@@ -565,7 +916,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/data": lambda: self._run_data(data),
             "/settings": lambda: self._save_settings(data),
         }
-        handler = handlers.get(urlparse(self.path).path)
+        handler = handlers.get(route_path)
         if not handler:
             self._send(render_layout("Introuvable", "<div class='notice error'>Action introuvable.</div>"), 404)
             return
@@ -579,12 +930,13 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             return f"<div class='card full notice error'><strong>ERREUR</strong><br>{escape(self.state.error)}</div>"
         if not self.state.result or self.state.result_route != route:
             return ""
-        return f"<section class='card full'><h2>{escape(self.state.result_title)}</h2>{_value(self.state.result)}</section>"
+        body = _recon_result(self.state.result) if route == "/recon" else _value(self.state.result)
+        return f"<section class='card full'><h2>{escape(self.state.result_title)}</h2>{body}</section>"
 
     def _home(self) -> None:
         if not self.state.accepted:
             body = f"""<section class="card full"><span class="eyebrow">Accès contrôlé</span>
-<h1>Cyber Learning Toolbox</h1><p>Cette console est réservée à l'apprentissage,
+<h1>Cyber Toolbox</h1><p>Cette console est réservée à l'apprentissage,
 aux laboratoires locaux et aux appareils explicitement autorisés.</p>
 <div class="notice">Les profils restent techniques. Ils ne servent pas à
 identifier, suivre ou surveiller une personne.</div><form method="post" action="/accept">
@@ -610,8 +962,8 @@ laboratoires, données et restitution.</p><a class="button" href="/recon">LANCER
 <a class="app" href="/profile"><strong>Profiler</strong><span>Actifs et confiance</span></a>
 <a class="app" href="/lab"><strong>Labs</strong><span>Journaux, HTTP, secrets</span></a>
 <a class="app" href="/wireless"><strong>Sans-fil</strong><span>Wi-Fi, Bluetooth, WPA2</span></a>
-<a class="app" href="/exposure"><strong>Exposure</strong><span>Vue locale type Shodan</span></a>
-<a class="app" href="/map"><strong>Cartographie</strong><span>Position et topologie réseau</span></a>
+<a class="app" href="/exposure"><strong>Inventaire</strong><span>Actifs et services observés</span></a>
+<a class="app" href="/map"><strong>Cartographie</strong><span>Carte et topologie réseau</span></a>
 <a class="app" href="/reports"><strong>Archives</strong>
 <span>{history_count} historiques / {len(list_reports())} rapports</span></a>
 <a class="app" href="/tools"><strong>Tools</strong><span>Système, hash, DNS, TLS</span></a>
@@ -646,23 +998,40 @@ dans le terminal avec <code>run.bat watchdog</code>.</p></section></div>"""
 
     def _recon(self) -> None:
         settings = load_settings()
-        body = f"""<div class="grid"><section class="card wide"><h2>Recon autorisée</h2>
-<p class="muted">Découverte d'un réseau privé ou scan des ports d'une cible.
-Les résultats conservés alimentent la carte et l'index d'exposition local.</p>
+        body = f"""<div class="grid"><section class="card full"><h2>Recon autorisée</h2>
+<p class="muted">Active une ou plusieurs sources de reconnaissance locale.
+Wi-Fi et Bluetooth utilisent uniquement les API autorisées du système :
+aucune connexion, capture, désauthentification ou appairage n'est effectué.</p>
 <form method="post" action="/recon">{self._token()}
-<label>Action<select name="action"><option value="discover">Découvrir les hôtes</option>
-<option value="scan">Scanner les ports</option></select></label>
-<label>Réseau ou cible<input name="subject" placeholder="192.168.1.0/24 ou 192.168.1.25" required></label>
+<div class="quick-grid">
+<label class="quick-toggle"><input type="checkbox" name="source_discover" checked>
+<span class="quick-icon">IP</span><strong>Réseau IP</strong><span>Hôtes actifs sur un réseau privé</span></label>
+<label class="quick-toggle"><input type="checkbox" name="source_ports">
+<span class="quick-icon">TCP</span><strong>Ports TCP</strong><span>Services ouverts sur une cible privée</span></label>
+<label class="quick-toggle"><input type="checkbox" name="source_wifi">
+<span class="quick-icon">WIFI</span><strong>Wi-Fi</strong><span>Réseaux visibles par cet appareil</span></label>
+<label class="quick-toggle"><input type="checkbox" name="source_bluetooth">
+<span class="quick-icon">BT</span><strong>Bluetooth</strong><span>Appareils connus ou visibles par l'OS</span></label>
+<label class="quick-toggle"><input type="checkbox" name="source_http">
+<span class="quick-icon">HTTP</span><strong>HTTP</strong><span>En-têtes exposés, sans injection</span></label>
+</div>
+<label>Réseau, IP ou URL<input name="subject" placeholder="192.168.1.0/24, 192.168.1.25 ou https://example.org"></label>
 <label>Ports<input name="ports" value="{escape(settings.default_ports)}"></label>
+<label>Vue des résultats<select name="view">
+<option value="category">Catégories séparées</option>
+<option value="table">Tableaux</option>
+<option value="list">Liste avec actions</option>
+</select></label>
 <label class="check"><input type="checkbox" name="authorized" required>
 Je confirme disposer de l'autorisation sur ce périmètre.</label>
 <label class="check"><input type="checkbox" name="keep" checked>
 Conserver dans l'historique local.</label>
 <button type="submit">EXÉCUTER LA RECON</button></form></section>
-<section class="card"><h2>Parcours</h2><ul class="clean"><li>Découvrir</li>
-<li>Sélectionner un actif</li><li>Scanner ses ports</li>
-<li>Profiler et interpréter</li></ul>
-<a href="/headers">Ouvrir l'audit HTTP passif</a></section>
+<section class="card full"><h2>Conditions</h2><ul class="clean">
+<li>IP/ports : uniquement réseau privé, localhost ou cible explicitement autorisée.</li>
+<li>Wi-Fi : nécessite les droits système/localisation selon Windows, Linux ou Termux.</li>
+<li>Bluetooth : inventaire OS uniquement, sans appairage ni interaction active.</li>
+<li>HTTP : lecture passive d'en-têtes sur une URL fournie.</li></ul></section>
 {self._result("/recon")}</div>"""
         self._send(render_layout("Reconnaissance", body))
 
@@ -673,13 +1042,23 @@ Conserver dans l'historique local.</label>
             if not _checked(data, "authorized"):
                 raise ValueError("L'autorisation explicite est obligatoire.")
             settings = load_settings()
-            action = _field(data, "action")
             subject = _field(data, "subject")
-            ports = ""
-            if action == "discover":
+            view = _field(data, "view", "category")
+            categories: dict[str, dict[str, Any]] = {}
+            suggestions: list[str] = []
+            ran_any = False
+            if _checked(data, "source_discover"):
+                if not subject:
+                    raise ValueError("Indiquez un réseau privé pour la découverte IP.")
                 results, engine = discover_hosts(subject, settings.prefer_nmap)
-                kind = "discovery"
-            elif action == "scan":
+                categories["network"] = {"title": "Réseau IP", "engine": engine, "items": results}
+                suggestions.append("Sélectionner une IP découverte puis ouvrir Profiler ou Scanner ports.")
+                ran_any = True
+                if _checked(data, "keep"):
+                    save_history("discovery", subject, engine, results)
+            if _checked(data, "source_ports"):
+                if not subject:
+                    raise ValueError("Indiquez une cible privée pour le scan de ports.")
                 from .safety import parse_ports
 
                 ports = _field(data, "ports", settings.default_ports)
@@ -689,23 +1068,56 @@ Conserver dans l'historique local.</label>
                     settings.scan_timeout,
                     settings.prefer_nmap,
                 )
-                kind = "port_scan"
-            else:
-                raise ValueError("Action de reconnaissance inconnue.")
-            result: dict[str, Any] = {
-                "action": action,
-                "subject": subject,
-                "engine": engine,
-                "duration_seconds": round(time.monotonic() - started, 2),
-                "results": results,
-            }
-            if _checked(data, "keep"):
-                result["history"] = str(
-                    save_history(kind, subject, engine, results, ports=ports)
-                )
+                categories["ports"] = {
+                    "title": "Ports TCP",
+                    "engine": engine,
+                    "items": [{"address": subject, **item} for item in results],
+                }
+                suggestions.append("Ouvrir HTTP pour les ports web ou Profiler pour consolider l'actif.")
+                ran_any = True
+                if _checked(data, "keep"):
+                    save_history("port_scan", subject, engine, results, ports=ports)
+            if _checked(data, "source_wifi"):
+                wifi = wifi_scan()
+                categories["wifi"] = {
+                    "title": "Wi-Fi visible",
+                    "engine": str(wifi.get("engine", "")),
+                    "items": wifi.get("networks", []),
+                }
+                suggestions.append("Contrôler le chiffrement Wi-Fi et documenter les réseaux ouverts ou faibles.")
+                ran_any = True
+            if _checked(data, "source_bluetooth"):
+                bluetooth = bluetooth_inventory()
+                categories["bluetooth"] = {
+                    "title": "Bluetooth",
+                    "engine": str(bluetooth.get("engine", "")),
+                    "items": bluetooth.get("items", []),
+                }
+                suggestions.append("Profiler uniquement les appareils Bluetooth explicitement autorisés.")
+                ran_any = True
+            if _checked(data, "source_http"):
+                if not subject:
+                    raise ValueError("Indiquez une URL pour l'analyse HTTP passive.")
+                url = subject if "://" in subject else f"http://{subject}"
+                status, headers = fetch_headers(url)
+                categories["http"] = {
+                    "title": "HTTP",
+                    "engine": f"HEAD {status}",
+                    "items": analyze_headers(headers, url.startswith("https://")),
+                }
+                suggestions.append("Ouvrir l'audit HTTP détaillé pour conserver la cible et les en-têtes.")
+                ran_any = True
+            if not ran_any:
+                raise ValueError("Activez au moins une source de reconnaissance.")
             self.state.result_title = "Résultat de reconnaissance"
             self.state.result_route = "/recon"
-            self.state.result = result
+            self.state.result = {
+                "subject": subject,
+                "view": view,
+                "duration_seconds": round(time.monotonic() - started, 2),
+                "categories": categories,
+                "suggestions": suggestions,
+            }
         except (ValueError, OSError) as exc:
             self.state.error = str(exc)
         self._redirect("/recon")
@@ -943,7 +1355,7 @@ Cette action efface toutes les données générées, mais pas le code du projet.
     def _exposure(self) -> None:
         inventory = exposure_inventory()
         body = f"""<div class="grid"><section class="card full">
-<span class="eyebrow">Local exposure index</span><h2>Vue type Shodan</h2>
+<span class="eyebrow">Local exposure index</span><h2>Inventaire d'exposition local</h2>
 <div class="notice">Aucune recherche Internet : cette page indexe uniquement les
 scans privés explicitement autorisés et conservés localement.</div>
 {_value(inventory)}</section></div>"""
@@ -959,31 +1371,47 @@ data-tab="network">Topologie réseau</button></div>
 <div class="notice">La position est facultative, demandée par le navigateur et
 non enregistrée. Les appareils découverts sur le réseau ne sont jamais placés
 sur cette carte géographique.</div>
-<div class="map-controls"><input id="map-latitude" type="number" step="any"
+<div class="geo-tools"><section class="geo-tool"><h3>Position</h3>
+<div class="geo-tool-row"><input id="map-latitude" type="number" step="any"
 placeholder="Latitude"><input id="map-longitude" type="number" step="any"
-placeholder="Longitude"><select id="map-layer" aria-label="Fond de carte">
+placeholder="Longitude"></div><div class="geo-tool-row"><select id="map-layer" aria-label="Fond de carte">
 <option value="standard">Standard</option>
-<option value="humanitarian">Humanitaire</option>
-<option value="cycle">Cyclable</option>
 <option value="topographic">Topographique / relief</option>
 </select><select id="map-zoom" aria-label="Niveau de zoom">
-<option value="12">Zoom régional</option><option value="14">Zoom ville</option>
-<option value="16" selected>Zoom quartier</option><option value="18">Zoom rue</option>
-</select><button type="button"
+<option value="2">2</option><option value="3">3</option><option value="4">4</option>
+<option value="5">5</option><option value="6">6</option><option value="7">7</option>
+<option value="8">8</option><option value="9">9</option><option value="10">10</option>
+<option value="11">11</option><option value="12">12</option><option value="13">13</option>
+<option value="14">14</option><option value="15">15</option>
+<option value="16" selected>16</option><option value="17">17</option>
+<option value="18">18</option><option value="19">19</option>
+</select></div><div class="geo-actions"><button type="button"
 onclick="showGeoMap(document.getElementById('map-latitude').value,
-document.getElementById('map-longitude').value)">AFFICHER</button></div>
-<button type="button" onclick="locateMap()">UTILISER MA POSITION</button>
+document.getElementById('map-longitude').value)">AFFICHER</button>
+<button type="button" onclick="locateMap()">UTILISER MA POSITION</button></div></section>
+<section class="geo-tool"><h3>Adresse</h3>
+<div class="geo-tool-row single"><input id="map-search" placeholder="Rechercher une adresse"></div>
+<div class="geo-actions"><button type="button" onclick="searchMapAddress()">RECHERCHER</button></div></section>
+<section class="geo-tool"><h3>Trajet</h3>
+<div class="geo-tool-row"><select id="route-start-mode" aria-label="Départ">
+<option value="current">Depart : marqueur actuel</option><option value="custom">Depart : adresse</option>
+</select><input id="route-start" placeholder="Adresse de départ si différente"></div>
+<div class="geo-tool-row"><input id="route-end" placeholder="Destination"><select id="route-profile" aria-label="Mode de trajet">
+<option value="driving">Voiture</option><option value="cycling">Vélo</option>
+<option value="walking">À pied</option></select></div>
+<div class="geo-actions"><button type="button" onclick="routeFromMap()">CALCULER UN TRAJET</button></div></section></div>
 <p id="geo-map-status" class="muted">Aucune position demandée.</p>
-<div class="geo-map" id="geo-map-frame" role="img"
+<div class="geo-map-shell"><div class="geo-map" id="geo-map-frame" role="img"
 aria-label="Carte centrée sur la position choisie"></div>
-<p class="muted">Fond actif : <span id="map-attribution">aucun</span>. Données ©
+<div class="map-ui" aria-label="Contrôles de carte">
+<button type="button" title="Zoom avant" onclick="adjustGeoZoom(1)">+</button>
+<button type="button" title="Recentrer sur le marqueur" onclick="recenterGeoMap()">@</button>
+<button type="button" title="Zoom arrière" onclick="adjustGeoZoom(-1)">-</button>
+</div></div>
+<p class="muted">Molette ou pincement : zoom. Fond actif : <span id="map-attribution">aucun</span>. Données ©
 <a href="https://www.openstreetmap.org/copyright" target="_blank"
-rel="noreferrer">contributeurs OpenStreetMap</a>. OpenStreetMap ne fournit pas
-de vue satellite native ; une telle vue nécessiterait un fournisseur d'imagerie
-distinct et ses propres conditions d'utilisation. Styles complémentaires :
-<a href="https://www.hotosm.org/" target="_blank" rel="noreferrer">HOT</a>,
-<a href="https://www.cyclosm.org/" target="_blank" rel="noreferrer">CyclOSM</a>
-et <a href="https://opentopomap.org/" target="_blank"
+rel="noreferrer">contributeurs OpenStreetMap</a>. Relief :
+<a href="https://opentopomap.org/" target="_blank"
 rel="noreferrer">OpenTopoMap</a>.</p></div>
 <div class="tab-panel" data-panel="network">{render_topology()}
 <p class="muted">Vert : actif observé. Orange : service à vérifier. Cette vue
@@ -1174,6 +1602,7 @@ password</textarea></label>
             feedback = f"<div class='notice error'>{escape(self.state.error)}</div>"
             self.state.error = ""
         themes = (
+            ("core", "SC", "#79ff3d"),
             ("violet", "Violet", "#d600a9"),
             ("github", "Bleu GitHub", "#58a6ff"),
             ("terminal", "Vert terminal", "#39ff88"),
@@ -1199,7 +1628,21 @@ data-tab="network">Réseau</button></div>
 <label class="switch"><span><strong>Glassmorphism</strong><br>
 <span class="muted">Transparence et flou des panneaux</span></span>
 <input type="checkbox" name="glass_effect"{" checked" if settings.glass_effect else ""}>
-<span class="switch-track"></span></label></div>
+<span class="switch-track"></span></label>
+<label>Opacité du verre
+<span class="range-row"><input type="range" name="glass_opacity" min="0.15" max="0.95"
+step="0.05" value="{settings.glass_opacity:.2f}">
+<strong id="glass-opacity-value">{settings.glass_opacity:.2f}</strong></span></label>
+<fieldset class="mode-slider"><legend>Mode global</legend><div class="mode-track" data-mode-track="app" data-value="{settings.app_color_mode}">
+<label><input type="radio" name="app_color_mode" value="auto"{" checked" if settings.app_color_mode == "auto" else ""}><span>Auto</span></label>
+<label><input type="radio" name="app_color_mode" value="light"{" checked" if settings.app_color_mode == "light" else ""}><span>Clair</span></label>
+<label><input type="radio" name="app_color_mode" value="dark"{" checked" if settings.app_color_mode == "dark" else ""}><span>Sombre</span></label>
+</div></fieldset>
+<fieldset class="mode-slider"><legend>Mode carte</legend><div class="mode-track" data-mode-track="map" data-value="{settings.map_color_mode}">
+<label><input type="radio" name="map_color_mode" value="auto"{" checked" if settings.map_color_mode == "auto" else ""}><span>Auto</span></label>
+<label><input type="radio" name="map_color_mode" value="day"{" checked" if settings.map_color_mode == "day" else ""}><span>Jour</span></label>
+<label><input type="radio" name="map_color_mode" value="night"{" checked" if settings.map_color_mode == "night" else ""}><span>Nuit</span></label>
+</div></fieldset></div>
 <div class="tab-panel" data-panel="behavior">
 <label>Langue<select name="language">
 <option value="fr"{" selected" if settings.language == "fr" else ""}>Français</option>
@@ -1230,8 +1673,11 @@ name="scan_timeout" value="{settings.scan_timeout}"></label>
             settings = Settings(
                 language=_field(data, "language", "fr"),
                 report_mode=_field(data, "report_mode", "ask"),
-                theme=_field(data, "theme", "violet"),
+                theme=_field(data, "theme", "core"),
+                app_color_mode=_field(data, "app_color_mode", "auto"),
+                map_color_mode=_field(data, "map_color_mode", "auto"),
                 glass_effect=_checked(data, "glass_effect"),
+                glass_opacity=float(_field(data, "glass_opacity", "0.46")),
                 default_ports=_field(data, "default_ports", "1-1024"),
                 prefer_nmap=_checked(data, "prefer_nmap"),
                 show_lessons=_checked(data, "show_lessons"),
@@ -1267,7 +1713,8 @@ name="scan_timeout" value="{settings.scan_timeout}"></label>
             "Content-Security-Policy",
             "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
             "img-src 'self' data: https://tile.openstreetmap.org "
-            "https://*.tile.openstreetmap.fr https://*.tile.opentopomap.org; "
+            "https://*.tile.opentopomap.org; "
+            "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org; "
             "frame-src https://www.openstreetmap.org",
         )
         self.end_headers()

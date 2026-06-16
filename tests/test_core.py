@@ -99,9 +99,30 @@ class SafetyTests(unittest.TestCase):
         self.assertIn('id="loading-overlay"', page)
         self.assertIn('id="menu-toggle"', page)
         self.assertIn('data-theme="', page)
+        self.assertIn('data-app-mode="', page)
+        self.assertIn('data-map-mode="', page)
         self.assertIn("Maréchaux Willem", page)
+        self.assertIn("BY SC", page)
+        self.assertNotIn("SOURCE CORE", page)
+        self.assertNotIn("DROP", page)
         self.assertIn("mapProviders", page)
+        self.assertIn("map-ui", page)
+        self.assertIn("searchMapAddress", page)
+        self.assertIn("routeFromMap", page)
+        self.assertIn("recenterGeoMap", page)
+        self.assertIn("router.project-osrm.org", page)
+        self.assertIn("pointermove", page)
+        self.assertIn('class="shell nav-collapsed"', page)
         self.assertIn("OpenTopoMap", page)
+        self.assertIn("[name=glass_opacity]", page)
+        self.assertIn("[name=app_color_mode]", page)
+        self.assertIn("[name=map_color_mode]", page)
+        self.assertIn("mode-track", page)
+        self.assertIn('data-mode-track="app"', page)
+        self.assertIn('data-mode-track="map"', page)
+        self.assertIn("quick-toggle", page)
+        self.assertNotIn("CyclOSM", page)
+        self.assertNotIn("Humanitarian OpenStreetMap", page)
         self.assertIn("await fetch", page)
 
     def test_structured_lists_use_one_aligned_table(self):
@@ -460,7 +481,10 @@ class LabTests(unittest.TestCase):
                 language="en",
                 report_mode="off",
                 theme="github",
+                app_color_mode="light",
+                map_color_mode="night",
                 glass_effect=False,
+                glass_opacity=0.45,
                 default_ports="22,80",
             )
             save_settings(expected, path)
@@ -468,7 +492,10 @@ class LabTests(unittest.TestCase):
             self.assertEqual(loaded.language, "en")
             self.assertEqual(loaded.report_mode, "off")
             self.assertEqual(loaded.theme, "github")
+            self.assertEqual(loaded.app_color_mode, "light")
+            self.assertEqual(loaded.map_color_mode, "night")
             self.assertFalse(loaded.glass_effect)
+            self.assertEqual(loaded.glass_opacity, 0.45)
             self.assertEqual(loaded.default_ports, "22,80")
 
     def test_scan_history_is_versioned_renamed_and_deleted(self):

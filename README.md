@@ -135,19 +135,18 @@ La page Carte possède deux onglets complémentaires :
 
 - **Carte géographique** : une carte OpenStreetMap interactive centrée sur des
   coordonnées saisies ou sur la position explicitement autorisée dans le
-  navigateur, avec zoom et fonds standard, humanitaire, cyclable ou
-  topographique ;
+  navigateur, avec recherche d'adresse, zoom, déplacement, recentrage sur le
+  marqueur, fonds standard ou topographique, et itinéraire indicatif lorsque
+  le service externe répond ;
 - **Topologie réseau** : une carte SVG construite à partir des scans de ports
   conservés.
 
 La position géographique n'est pas enregistrée. Les appareils découverts sur le
 réseau ne sont jamais placés automatiquement sur cette carte.
 
-OpenStreetMap ne fournit pas directement une vue satellite. La toolbox utilise
-des rendus basés sur les données OpenStreetMap : Standard, Humanitaire, CyclOSM
+La toolbox utilise deux rendus basés sur les données OpenStreetMap : Standard
 et OpenTopoMap. Le fond topographique peut afficher le relief et les courbes de
-niveau selon les données disponibles. Une future vue satellite nécessiterait un
-fournisseur d'imagerie distinct, une clé éventuelle et ses propres conditions.
+niveau selon les données disponibles.
 
 Dans la topologie réseau :
 
@@ -177,16 +176,12 @@ de localisation. Si seul le réseau connecté apparaît :
 Sans cette permission, la toolbox indique que le scan est incomplet et affiche
 seulement le réseau connecté lorsqu'il reste accessible.
 
-### Vue type Shodan
+### Inventaire d'exposition local
 
-La page **Exposition locale** offre une expérience proche d'un moteur
-d'exposition : actifs, services, dernières observations et points d'attention.
-Elle n'interroge pas Shodan et ne scanne pas Internet. Elle indexe uniquement
-les résultats privés et autorisés déjà conservés dans `historique/`.
-
-Ce choix permet une démonstration proche du principe de Shodan sans transformer
-la toolbox en moteur de reconnaissance Internet : on observe sa propre surface,
-on retrouve les services connus et on suit leur évolution dans le temps.
+La page **Exposition locale** offre un inventaire défensif : actifs, services,
+dernières observations et points d'attention. Elle ne scanne pas Internet. Elle
+indexe uniquement les résultats privés et autorisés déjà conservés dans
+`historique/`.
 
 ## Fonctionnalités
 
