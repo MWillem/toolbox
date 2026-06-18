@@ -306,6 +306,14 @@ padding:12px;background:var(--field);display:grid;gap:8px}
 border-radius:999px;padding:7px 10px;color:var(--text);text-decoration:none;background:var(--field)}
 .record-card{display:grid;gap:8px;border:1px solid var(--line);border-radius:var(--radius);padding:12px;background:var(--field)}
 .record-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.radar{position:relative;min-height:220px;border:1px solid var(--line);border-radius:50%;
+background:radial-gradient(circle,rgba(56,232,255,.18) 1px,transparent 2px),
+radial-gradient(circle,transparent 30%,rgba(121,255,61,.08) 31%,transparent 32%,transparent 60%,rgba(121,255,61,.08) 61%,transparent 62%);
+background-size:100% 100%;overflow:hidden}.radar:after{content:"";position:absolute;inset:50% 0 auto 50%;
+width:50%;height:2px;background:linear-gradient(90deg,var(--signal),transparent);transform-origin:left center;
+animation:radarSweep 4s linear infinite}@keyframes radarSweep{to{transform:rotate(360deg)}}
+.radar-dot{position:absolute;width:10px;height:10px;border-radius:50%;background:var(--signal);box-shadow:0 0 14px var(--signal)}
+.wireless-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
 pre{max-width:100%;overflow:auto;
 white-space:pre-wrap;word-break:break-word;padding:16px;border:1px solid var(--line);
 background:var(--panel);backdrop-filter:blur(18px) saturate(130%);color:#c9fbe0}ul.clean{padding:0;list-style:none}ul.clean li{
@@ -682,6 +690,84 @@ def _profile_result(value: dict[str, Any]) -> str:
         for title, body in sections
     )
     return f"<div class='profile-summary'>{_records_metrics()}</div><div class='profile-tabs'>{blocks}</div>{actions}"
+
+
+def _wireless_result(value: dict[str, Any]) -> str:
+    if "networks" in value:
+        networks = value.get("networks", [])
+        intro = _value({
+            "moteur": value.get("engine", "-"),
+            "disponible": value.get("available", False),
+            "description": value.get("description", ""),
+        })
+        cards = []
+        if isinstance(networks, list):
+            for item in networks:
+                if not isinstance(item, dict):
+                    continue
+                ssid = str(item.get("ssid") or item.get("name") or "Reseau masque")
+                signal = str(item.get("signal") or item.get("rssi") or "-")
+                security = str(item.get("security") or "inconnu")
+                risk = "attention" if security.lower() in {"open", "ouvert", "none", "aucun"} else "info"
+                cards.append(
+                    "<article class='record-card'>"
+                    f"<span class='risk-badge' data-risk='{risk}'>{escape(risk)}</span>"
+                    f"<strong>{escape(ssid)}</strong>"
+                    f"<span class='muted'>Signal {escape(signal)} · canal {escape(str(item.get('channel', '-')))} · {escape(security)}</span>"
+                    f"{_value(item)}"
+                    "<div class='action-row'><a href='/map'>Ajouter a la carte</a><a href='/reports#correlations'>Correler</a></div>"
+                    "</article>"
+                )
+        return intro + "<h3>Wi-Fi Analyzer</h3>" + ("<div class='record-grid'>" + "".join(cards) + "</div>" if cards else "<p class='muted'>Aucun reseau affiche.</p>") + _value(value.get("limitations", []))
+    if "items" in value:
+        items = value.get("items", [])
+        dots = []
+        cards = []
+        if isinstance(items, list):
+            for index, item in enumerate(items[:12]):
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or item.get("alias") or item.get("address") or "Bluetooth inconnu")
+                left = 18 + (index * 29) % 64
+                top = 20 + (index * 37) % 58
+                dots.append(f"<span class='radar-dot' style='left:{left}%;top:{top}%'></span>")
+                cards.append(
+                    "<article class='record-card'>"
+                    "<span class='risk-badge'>proximite</span>"
+                    f"<strong>{escape(name)}</strong>{_value(item)}"
+                    "<div class='action-row'><a href='/reports#timeline'>Timeline</a><a href='/reports#correlations'>Correler</a></div>"
+                    "</article>"
+                )
+        intro = _value({
+            "moteur": value.get("engine", "-"),
+            "disponible": value.get("available", False),
+            "description": value.get("description", ""),
+        })
+        return intro + "<h3>Bluetooth Radar</h3><div class='wireless-grid'><div class='radar'>" + "".join(dots) + "</div><div class='record-grid'>" + ("".join(cards) or "<p class='muted'>Aucun appareil affiche.</p>") + "</div></div>" + _value(value.get("limitations", []))
+    return _value(value)
+
+
+def _save_wireless_records(result: dict[str, Any], action: str) -> dict[str, int]:
+    if action == "wifi":
+        categories = {
+            "wifi": {
+                "title": "Wi-Fi Analyzer",
+                "engine": str(result.get("engine", "")),
+                "items": result.get("networks", []),
+            }
+        }
+    elif action == "bluetooth":
+        categories = {
+            "bluetooth": {
+                "title": "Bluetooth Radar",
+                "engine": str(result.get("engine", "")),
+                "items": result.get("items", []),
+            }
+        }
+    else:
+        return {"artifacts": 0, "events": 0, "correlations": 0}
+    saved = save_recon_records(categories, subject=f"{action}-local", scope="local_authorized")
+    return {key: len(saved[key]) for key in ("artifacts", "events", "correlations")}
 
 
 def _field(data: dict[str, list[str]], name: str, default: str = "") -> str:
@@ -1259,6 +1345,8 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             body = _recon_result(self.state.result)
         elif route == "/profile":
             body = _profile_result(self.state.result)
+        elif route == "/wireless":
+            body = _wireless_result(self.state.result)
         else:
             body = _value(self.state.result)
         return f"<section class='card full'><h2>{escape(self.state.result_title)}</h2>{body}</section>"
@@ -2112,27 +2200,38 @@ le dossier de la toolbox. Les chemins absolus extérieurs sont refusés.</p>
 
     def _wireless(self) -> None:
         body = f"""<div class="grid"><section class="card full" data-tabs>
-<h2>Environnement sans-fil</h2><p class="muted">Toutes les collectes utilisent
-les API autorisées du système. Aucun appairage, connexion, capture ou paquet de
-désauthentification n'est émis.</p>
+<span class="eyebrow">Sans-fil</span><h2>Wi-Fi Analyzer & Bluetooth Radar</h2>
+<p class="muted">Collecte locale via les API autorisees du systeme. Aucune connexion forcee, capture,
+desauthentification ou appairage n'est effectue. Les positions Wi-Fi/Bluetooth restent approximatives.</p>
 <div class="tabs"><button class="tab-button active" type="button"
-data-tab="scan">Inventaire</button><button class="tab-button" type="button"
+data-tab="tools">Outils</button><button class="tab-button" type="button"
 data-tab="wpa">Lab WPA2</button></div>
-<div class="tab-panel active" data-panel="scan"><form method="post" action="/wireless">
-{self._token()}<label>Action<select name="action">
-<option value="wifi">Réseaux Wi-Fi visibles</option>
-<option value="bluetooth">Bluetooth connu ou visible</option>
-<option value="carrier">Opérateur mobile de cet appareil</option>
-<option value="environment">Profil de l'appareil courant</option>
-<option value="diagnostic">Diagnostic des capacités</option>
-</select></label><button type="submit">EXÉCUTER</button></form>
-<div class="notice">Sous Windows, la liste complète des réseaux voisins nécessite
-l'autorisation de localisation pour les applications de bureau. Sans elle, seul
-le réseau connecté peut être disponible.<br><br>
-Sur Android, le scan fonctionne dans Termux avec l'application Termux:API,
-le paquet <code>termux-api</code> et les permissions Localisation/Appareils à
-proximité. L'opérateur mobile n'est lisible que pour le téléphone qui exécute
-la toolbox, jamais pour un appareil tiers observé en Wi-Fi ou Bluetooth.</div></div>
+<div class="tab-panel active" data-panel="tools"><div class="scanner-grid">
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">WIFI</span>
+<div><h3>Wi-Fi Analyzer</h3><p class="muted">SSID, BSSID si disponible, RSSI, canal, frequence, securite et reseau connecte.</p></div></div>
+<div class="meta-row"><span class="risk-badge">observation</span><span class="status-badge">position approximative</span></div>
+<form method="post" action="/wireless">{self._token()}<input type="hidden" name="action" value="wifi">
+<label class="check"><input type="checkbox" name="keep" checked>Creer artefacts, timeline et correlations.</label>
+<button type="submit">LANCER WIFI ANALYZER</button></form></article>
+
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">BT</span>
+<div><h3>Bluetooth Radar</h3><p class="muted">Appareils connus ou visibles, nom, adresse si disponible et proximite indicative.</p></div></div>
+<div class="meta-row"><span class="risk-badge">observation</span><span class="status-badge">radar</span></div>
+<form method="post" action="/wireless">{self._token()}<input type="hidden" name="action" value="bluetooth">
+<label class="check"><input type="checkbox" name="keep" checked>Creer fiche Bluetooth, timeline et correlation.</label>
+<button type="submit">LANCER BLUETOOTH RADAR</button></form></article>
+
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">TEL</span>
+<div><h3>Radio mobile locale</h3><p class="muted">Operateur et etat radio du telephone qui execute la toolbox, jamais d'un tiers.</p></div></div>
+<form method="post" action="/wireless">{self._token()}<input type="hidden" name="action" value="carrier">
+<button type="submit">LIRE CET APPAREIL</button></form></article>
+
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">SYS</span>
+<div><h3>Diagnostic sans-fil</h3><p class="muted">Capacites disponibles selon Windows, Linux, macOS ou Termux.</p></div></div>
+<form method="post" action="/wireless">{self._token()}<input type="hidden" name="action" value="diagnostic">
+<button type="submit">DIAGNOSTIQUER</button></form></article>
+</div><div class="notice">Windows peut exiger l'autorisation de localisation pour lister les reseaux voisins.
+Android/Termux exige Termux:API, le paquet <code>termux-api</code> et les permissions Localisation/Appareils a proximite.</div></div>
 <div class="tab-panel" data-panel="wpa"><h2>Lab WPA2 hors ligne</h2>
 <form method="post" action="/wireless">{self._token()}
 <input type="hidden" name="action" value="wifi_lab">
@@ -2179,6 +2278,8 @@ password</textarea></label>
                 )
             else:
                 raise ValueError("Action sans-fil inconnue.")
+            if action in {"wifi", "bluetooth"} and _checked(data, "keep"):
+                result["records"] = _save_wireless_records(result, action)
             self.state.result_title = "Résultat sans-fil"
             self.state.result_route = "/wireless"
             self.state.result = result

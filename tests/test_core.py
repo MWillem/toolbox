@@ -137,6 +137,8 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("profile-section", page)
         self.assertIn("record-card", page)
         self.assertIn("filter-row", page)
+        self.assertIn("wireless-grid", page)
+        self.assertIn("radarSweep", page)
         self.assertNotIn("CyclOSM", page)
         self.assertNotIn("Humanitarian OpenStreetMap", page)
         self.assertIn("await fetch", page)
