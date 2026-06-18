@@ -59,12 +59,15 @@ from .reports import (
     save_professional_report,
 )
 from .records import (
+    Artifact,
+    TimelineEvent,
     delete_all_records,
     delete_record,
     list_records,
     load_record,
     record_display_name,
     records_summary,
+    save_record,
     save_recon_records,
 )
 from .settings import Settings, load_settings, save_settings, settings_summary
@@ -279,6 +282,14 @@ padding:16px;background:var(--field)}.scanner-card h3{margin:0;color:var(--signa
 .scanner-card form{display:grid;gap:10px}.scanner-card .meta-row{display:flex;gap:8px;flex-wrap:wrap}
 .scanner-card .button-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .scanner-card button{width:100%}
+.device-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.device-card{display:grid;gap:10px;border:1px solid var(--line);border-radius:var(--radius);
+padding:14px;background:var(--field)}.device-card h3{margin:0;color:var(--text);word-break:break-word}
+.device-card .device-meta{display:flex;gap:8px;flex-wrap:wrap}.device-card .device-actions{display:flex;gap:8px;flex-wrap:wrap}
+.device-card .device-actions a{border:1px solid var(--line);border-radius:999px;padding:7px 10px;text-decoration:none;color:var(--text)}
+.profile-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px}
+.profile-tabs{display:grid;gap:12px}.profile-section{border:1px solid var(--line);border-radius:var(--radius);
+background:var(--field);padding:12px}.profile-section h3{margin:0 0 8px;color:var(--signal)}
 .action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.action-row a{padding:7px 10px;
 border:1px solid var(--line);border-radius:999px;background:rgba(var(--panel-rgb),.5)}
 .status-badge,.risk-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);
@@ -496,6 +507,103 @@ def _correlation_preview(limit: int = 5) -> str:
     if not cards:
         return "<p class='muted'>Aucune correlation generee pour le moment.</p>"
     return "<div class='timeline'>" + "".join(cards) + "</div>"
+
+
+def _device_inventory() -> list[dict[str, Any]]:
+    devices: dict[str, dict[str, Any]] = {}
+    exposure = exposure_inventory()
+    for address, asset in exposure.get("assets", {}).items():
+        devices[address] = {
+            "address": address,
+            "title": str(asset.get("label") or address),
+            "kind": "Appareil réseau",
+            "confidence": "moyenne",
+            "risk": "attention" if asset.get("findings") else "info",
+            "services": asset.get("services", []),
+            "last_seen": str(asset.get("last_seen", "")),
+            "source": "historique ports",
+            "findings": asset.get("findings", []),
+        }
+    for path in list_records("artifact"):
+        payload = load_record(path)
+        if payload.get("kind") not in {"device", "device_profile"}:
+            continue
+        data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
+        address = str(payload.get("value") or data.get("address") or data.get("ip") or payload.get("title") or "")
+        if not address:
+            continue
+        current = devices.setdefault(address, {"address": address, "services": [], "findings": []})
+        services = data.get("services", current.get("services", []))
+        current.update({
+            "title": str(payload.get("title") or address),
+            "kind": str(data.get("device_type") or "Appareil observé"),
+            "confidence": str(payload.get("confidence") or current.get("confidence") or "faible"),
+            "risk": str(payload.get("risk") or current.get("risk") or "info"),
+            "services": services if isinstance(services, list) else current.get("services", []),
+            "last_seen": str(payload.get("created_at") or current.get("last_seen") or ""),
+            "source": str(payload.get("source") or current.get("source") or "artifact"),
+        })
+    return sorted(devices.values(), key=lambda item: str(item.get("last_seen", "")), reverse=True)
+
+
+def _device_cards() -> str:
+    cards = []
+    for device in _device_inventory():
+        address = str(device.get("address") or "")
+        services = device.get("services", [])
+        service_count = len(services) if isinstance(services, list) else 0
+        risk = escape(str(device.get("risk") or "info"))
+        confidence = escape(str(device.get("confidence") or "faible"))
+        quoted = quote(address)
+        cards.append(
+            "<article class='device-card'>"
+            f"<div><h3>{escape(str(device.get('title') or address))}</h3>"
+            f"<span class='muted'>{escape(address)}</span></div>"
+            f"<div class='device-meta'><span class='risk-badge' data-risk='{risk}'>{risk}</span>"
+            f"<span class='status-badge'>{confidence}</span><span class='badge'>{service_count} services</span></div>"
+            f"<p class='muted'>Dernière activité : {escape(str(device.get('last_seen') or '-'))}</p>"
+            f"<p>{escape(str(device.get('kind') or 'Appareil'))}</p>"
+            f"<div class='device-actions'><a href='/profile?target={quoted}'>Voir fiche</a>"
+            f"<a href='/recon?subject={quoted}&target={quoted}&source_ports=1'>Scanner ports</a>"
+            f"<a href='/reports'>Corréler</a></div></article>"
+        )
+    if not cards:
+        return "<p class='muted'>Aucun appareil conservé pour le moment. Lance un scan réseau ou ports avec conservation.</p>"
+    return "<div class='device-grid'>" + "".join(cards) + "</div>"
+
+
+def _profile_result(value: dict[str, Any]) -> str:
+    summary = {
+        "Adresse": value.get("address", "-"),
+        "Nom": value.get("hostname", "-"),
+        "Type probable": value.get("device_type", "-"),
+        "Confiance": value.get("confidence", "faible"),
+        "Fabricant": value.get("manufacturer", "-") or "-",
+        "MAC": value.get("mac_address", "-") or "-",
+    }
+    actions = ""
+    address = str(value.get("address") or value.get("target") or "")
+    if address:
+        quoted = quote(address)
+        actions = (
+            "<div class='action-row'>"
+            f"<a href='/recon?subject={quoted}&target={quoted}&source_ports=1'>Scanner ports</a>"
+            f"<a href='/headers?url=http://{quoted}'>HTTP passif</a>"
+            "<a href='/reports'>Voir timeline/corrélations</a></div>"
+        )
+    sections = [
+        ("Résumé", _value(summary)),
+        ("Services", _value(value.get("services", []))),
+        ("Indices utilisés", _value(value.get("evidence", []))),
+        ("Noms observés", _value(value.get("name_observations", []))),
+        ("Corrélations", _value(value.get("correlations", []))),
+        ("Limites", _value(value.get("limitations", []))),
+    ]
+    blocks = "".join(
+        f"<section class='profile-section'><h3>{escape(title)}</h3>{body}</section>"
+        for title, body in sections
+    )
+    return f"<div class='profile-summary'>{_records_metrics()}</div><div class='profile-tabs'>{blocks}</div>{actions}"
 
 
 def _field(data: dict[str, list[str]], name: str, default: str = "") -> str:
@@ -1069,7 +1177,12 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             return f"<div class='card full notice error'><strong>ERREUR</strong><br>{escape(self.state.error)}</div>"
         if not self.state.result or self.state.result_route != route:
             return ""
-        body = _recon_result(self.state.result) if route == "/recon" else _value(self.state.result)
+        if route == "/recon":
+            body = _recon_result(self.state.result)
+        elif route == "/profile":
+            body = _profile_result(self.state.result)
+        else:
+            body = _value(self.state.result)
         return f"<section class='card full'><h2>{escape(self.state.result_title)}</h2>{body}</section>"
 
     def _home(self) -> None:
@@ -1460,18 +1573,28 @@ du système : aucune connexion, capture, désauthentification ou appairage.</p>
 
     def _profile(self) -> None:
         settings = load_settings()
-        body = f"""<div class="grid"><section class="card wide">
-<h2>Acquisition autorisée</h2><p class="muted">Le scan est limité aux adresses
-privées et locales. Nmap est utilisé s'il est disponible.</p>
+        devices = _device_cards()
+        body = f"""<div class="grid"><section class="card full">
+<span class="eyebrow">Inventaire</span><h2>Appareils observes</h2>
+<p class="muted">Liste compacte construite depuis les scans conserves et les artefacts JSON.
+Les hypotheses restent techniques et peuvent etre faibles si peu d'indices sont disponibles.</p>
+{devices}</section><section class="card wide">
+<h2>Creer une fiche appareil</h2><p class="muted">Le scan est limite aux adresses
+privees et locales. Nmap est utilise s'il est disponible.</p>
 <form method="post" action="/profile">{self._token()}
 <label>Cible<input name="target" placeholder="192.168.1.25 ou localhost" required></label>
 <label>Ports<input name="ports" value="{escape(settings.default_ports)}" required></label>
 <label class="check"><input type="checkbox" name="authorized" required>
-Je dispose de l'autorisation du propriétaire ou responsable.</label>
-<label class="check"><input type="checkbox" name="report">Générer un rapport.</label>
+Je dispose de l'autorisation du proprietaire ou responsable.</label>
+<label class="check"><input type="checkbox" name="keep" checked>Conserver la fiche en artefact/timeline.</label>
+<label class="check"><input type="checkbox" name="report">Generer un rapport.</label>
 <button type="submit">LANCER LE PROFIL</button></form></section>
-<section class="card"><h2>Observations</h2><ul class="clean"><li>Adresse et nom</li>
-<li>MAC locale</li><li>Services exposés</li><li>Type probable</li></ul></section>
+<section class="card"><h2>Filtres rapides</h2><div class="app-grid">
+<a class="app" href="/devices"><strong>Actifs</strong><span>Appareils vus recemment</span></a>
+<a class="app" href="/reports"><strong>Inconnus</strong><span>Confiance faible a correler</span></a>
+<a class="app" href="/reports"><strong>Critiques</strong><span>Ports sensibles ou alertes</span></a>
+<a class="app" href="/reports"><strong>Favoris</strong><span>A brancher aux missions</span></a>
+</div></section>
 {self._result("/profile")}</div>"""
         self._send(render_layout("Appareils", body))
 
@@ -1507,6 +1630,40 @@ Je dispose de l'autorisation du propriétaire ou responsable.</label>
                     "Estimation technique, sans identification personnelle.",
                 )
                 result["rapport"] = str(path)
+            if _checked(data, "keep"):
+                sensitive_ports = {21, 23, 445, 3389, 5900, 6379}
+                has_sensitive_port = False
+                for item in profile.services:
+                    try:
+                        has_sensitive_port = int(item.get("port", 0)) in sensitive_ports
+                    except (TypeError, ValueError):
+                        has_sensitive_port = False
+                    if has_sensitive_port:
+                        break
+                artifact = Artifact(
+                    kind="device_profile",
+                    source=str(profile.scan_engine or "profiler"),
+                    title=f"Profil {profile.address}",
+                    summary=f"{profile.address} : {profile.device_type} ({profile.confidence})",
+                    value=profile.address,
+                    confidence=profile.confidence,
+                    risk="attention" if has_sensitive_port else "info",
+                    scope="local_authorized",
+                    tags=["device", "profile"],
+                    data=result,
+                )
+                save_record(artifact)
+                save_record(
+                    TimelineEvent(
+                        source="profiler",
+                        event_type="device_profile",
+                        description=artifact.summary,
+                        level="attention" if artifact.risk == "attention" else "info",
+                        artifact_id=artifact.id,
+                        link="/devices",
+                    )
+                )
+                result["artefact"] = artifact.id
             self.state.result_title = "Résultat du profil"
             self.state.result_route = "/profile"
             self.state.result = result

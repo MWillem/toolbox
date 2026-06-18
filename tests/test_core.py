@@ -132,6 +132,8 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("quick-toggle", page)
         self.assertIn("scanner-grid", page)
         self.assertIn("scanner-card", page)
+        self.assertIn("device-card", page)
+        self.assertIn("profile-section", page)
         self.assertNotIn("CyclOSM", page)
         self.assertNotIn("Humanitarian OpenStreetMap", page)
         self.assertIn("await fetch", page)
