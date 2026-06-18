@@ -64,6 +64,12 @@ from cybertoolbox.reports import (
     rename_report,
     save_professional_report,
 )
+from cybertoolbox.records import (
+    delete_all_records,
+    list_records,
+    records_summary,
+    save_recon_records,
+)
 from cybertoolbox.safety import parse_ports, parse_private_network, resolve_authorized_target
 from cybertoolbox.settings import Settings, load_settings, save_settings
 from cybertoolbox.watchdog import (
@@ -606,6 +612,35 @@ class LabTests(unittest.TestCase):
                 self.assertEqual(list(Path(directory).iterdir()), [])
             finally:
                 reports.REPORTS_DIR = previous
+
+    def test_recon_records_are_structured_json(self):
+        categories = {
+            "network": {
+                "title": "Reseau IP",
+                "engine": "test",
+                "items": [{"address": "192.168.1.10", "hostname": "nas.local"}],
+            },
+            "ports": {
+                "title": "Ports TCP",
+                "engine": "test",
+                "items": [{"address": "192.168.1.10", "port": 445, "service": "smb"}],
+            },
+            "wifi": {
+                "title": "Wi-Fi visible",
+                "engine": "test",
+                "items": [{"ssid": "Guest", "security": "open", "signal": -50}],
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            saved = save_recon_records(categories, subject="192.168.1.0/24", root=root)
+            self.assertEqual(len(saved["artifacts"]), 3)
+            self.assertEqual(len(saved["events"]), 3)
+            self.assertGreaterEqual(len(saved["correlations"]), 2)
+            self.assertEqual(records_summary(root)["artifacts"], 3)
+            artifact_paths = list_records("artifact", root)
+            self.assertTrue(artifact_paths[0].read_text(encoding="utf-8").strip().startswith("{"))
+            self.assertGreater(delete_all_records(root=root), 0)
 
 
 if __name__ == "__main__":

@@ -58,6 +58,15 @@ from .reports import (
     rename_report,
     save_professional_report,
 )
+from .records import (
+    delete_all_records,
+    delete_record,
+    list_records,
+    load_record,
+    record_display_name,
+    records_summary,
+    save_recon_records,
+)
 from .settings import Settings, load_settings, save_settings, settings_summary
 
 
@@ -265,6 +274,16 @@ grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.recon-fields 
 backdrop-filter:blur(18px) saturate(130%)}.recon-category h3{margin:0 0 10px;color:var(--signal)}
 .action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.action-row a{padding:7px 10px;
 border:1px solid var(--line);border-radius:999px;background:rgba(var(--panel-rgb),.5)}
+.status-badge,.risk-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);
+border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900;text-transform:uppercase}
+.risk-badge[data-risk="attention"],.status-badge[data-level="attention"]{border-color:rgba(255,138,34,.55);color:var(--orange)}
+.risk-badge[data-risk="critique"],.status-badge[data-level="critique"]{border-color:rgba(255,77,89,.65);color:var(--danger)}
+.metric-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.metric-card{border:1px solid var(--line);border-radius:var(--radius);padding:14px;background:var(--field)}
+.metric-card strong{display:block;font-size:28px;color:var(--signal)}.metric-card span{color:var(--muted);font-size:12px}
+.timeline{display:grid;gap:10px}.timeline-item{border-left:2px solid var(--line);padding:8px 0 8px 14px}
+.timeline-item strong{display:block}.correlation-card{border:1px solid var(--line);border-radius:var(--radius);
+padding:12px;background:var(--field);display:grid;gap:8px}
 pre{max-width:100%;overflow:auto;
 white-space:pre-wrap;word-break:break-word;padding:16px;border:1px solid var(--line);
 background:var(--panel);backdrop-filter:blur(18px) saturate(130%);color:#c9fbe0}ul.clean{padding:0;list-style:none}ul.clean li{
@@ -409,9 +428,67 @@ def _recon_result(value: dict[str, Any]) -> str:
             f"{_value(limitations) if limitations else ''}{body}</section>"
         )
     suggestions = value.get("suggestions", [])
+    records = value.get("records")
+    if isinstance(records, dict):
+        blocks.append(
+            "<section class='recon-category'><h3>DonnÃ©es crÃ©Ã©es</h3>"
+            f"{_value(records)}</section>"
+        )
     if suggestions:
         blocks.append("<section class='recon-category'><h3>Suites possibles</h3>" + _value(suggestions) + "</section>")
     return "<div class='recon-result'>" + "".join(blocks) + "</div>"
+
+
+def _records_metrics() -> str:
+    summary = records_summary()
+    return (
+        "<div class='metric-row'>"
+        f"<div class='metric-card'><strong>{summary['artifacts']}</strong><span>artefacts JSON</span></div>"
+        f"<div class='metric-card'><strong>{summary['events']}</strong><span>evenements timeline</span></div>"
+        f"<div class='metric-card'><strong>{summary['correlations']}</strong><span>correlations</span></div>"
+        "</div>"
+    )
+
+
+def _timeline_preview(limit: int = 5) -> str:
+    events = []
+    for path in list_records("event")[:limit]:
+        payload = load_record(path)
+        level = escape(str(payload.get("level", "info")))
+        events.append(
+            "<div class='timeline-item'>"
+            f"<span class='status-badge' data-level='{level}'>{level}</span>"
+            f"<strong>{escape(str(payload.get('description', 'Evenement')))}</strong>"
+            f"<span class='muted'>{escape(str(payload.get('created_at', '')).replace('T', ' '))}"
+            f" · {escape(str(payload.get('source', '')))}</span></div>"
+        )
+    if not events:
+        return "<p class='muted'>Aucun evenement enregistre pour le moment.</p>"
+    return "<div class='timeline'>" + "".join(events) + "</div>"
+
+
+def _correlation_preview(limit: int = 5) -> str:
+    cards = []
+    for path in list_records("correlation")[:limit]:
+        payload = load_record(path)
+        severity = escape(str(payload.get("severity", "info")))
+        recommendations = payload.get("recommendations", [])
+        recommendation = recommendations[0] if isinstance(recommendations, list) and recommendations else ""
+        recommendation_html = (
+            f"<span class='muted'>{escape(str(recommendation))}</span>"
+            if recommendation else ""
+        )
+        cards.append(
+            "<div class='correlation-card'>"
+            f"<span class='risk-badge' data-risk='{severity}'>{severity}</span>"
+            f"<strong>{escape(str(payload.get('title', 'Correlation')))}</strong>"
+            f"<span>{escape(str(payload.get('hypothesis', '')))}</span>"
+            f"{recommendation_html}"
+            "</div>"
+        )
+    if not cards:
+        return "<p class='muted'>Aucune correlation generee pour le moment.</p>"
+    return "<div class='timeline'>" + "".join(cards) + "</div>"
 
 
 def _field(data: dict[str, list[str]], name: str, default: str = "") -> str:
@@ -1003,6 +1080,8 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
         settings = load_settings()
         exposure = exposure_inventory()
         history_count = len(list_history())
+        record_metrics = _records_metrics()
+        timeline = _timeline_preview(4)
         body = f"""<div class="grid"><section class="card wide">
 <span class="eyebrow">Observe. Profile. Correlate.</span><h2>recon SC</h2>
 <p>Console locale défensive pour observer un périmètre autorisé, profiler les
@@ -1031,7 +1110,9 @@ appareils, corréler les preuves et préparer une restitution claire.</p>
 <a class="app" href="/missions"><strong>Missions</strong><span>Scénarios pédagogiques</span></a>
 <a class="app" href="/reports"><strong>Rapports</strong>
 <span>{history_count} historiques / {len(list_reports())} rapports</span></a>
-</div></section><section class="card full"><h2>Configuration active</h2>
+</div></section><section class="card full"><h2>DonnÃ©es rÃ©utilisables</h2>
+{record_metrics}</section><section class="card full"><h2>Timeline rÃ©cente</h2>
+{timeline}</section><section class="card full"><h2>Configuration active</h2>
 {_value(dict(settings_summary(settings)))}</section></div>"""
         self._send(render_layout("Accueil", body))
 
@@ -1292,6 +1373,13 @@ Conserver dans l'historique local.</label>
                 ran_any = True
             if not ran_any:
                 raise ValueError("Activez au moins une source de reconnaissance.")
+            records = {"artifacts": [], "events": [], "correlations": []}
+            if _checked(data, "keep"):
+                records = save_recon_records(
+                    categories,
+                    subject=target_subject or network_subject,
+                    scope="local_authorized",
+                )
             self.state.result_title = "Résultat de reconnaissance"
             self.state.result_route = "/recon"
             self.state.result = {
@@ -1302,6 +1390,11 @@ Conserver dans l'historique local.</label>
                 "duration_seconds": round(time.monotonic() - started, 2),
                 "categories": categories,
                 "suggestions": suggestions,
+                "records": {
+                    "artifacts": len(records["artifacts"]),
+                    "events": len(records["events"]),
+                    "correlations": len(records["correlations"]),
+                },
             }
         except (ValueError, OSError) as exc:
             self.state.error = str(exc)
@@ -1459,6 +1552,26 @@ data-confirm="Supprimer définitivement cet élément ?">{self._token()}
             for path in list_missions()
         ) or "<li class='muted'>Aucune mission sauvegardée.</li>"
 
+        def record_items(record_type: str, scope: str) -> str:
+            items = []
+            for path in list_records(record_type):
+                payload = load_record(path)
+                label = record_display_name(payload)
+                items.append(
+                    f"""<li><strong>{escape(label)}</strong><div class="data-actions">
+<form class="compact" method="post" action="/data"
+data-confirm="Supprimer dÃ©finitivement cet Ã©lÃ©ment ?">{self._token()}
+<input type="hidden" name="scope" value="{scope}">
+<input type="hidden" name="name" value="{escape(path.name)}">
+<input type="hidden" name="operation" value="delete">
+<button class="danger" type="submit">SUPPRIMER</button></form></div></li>"""
+                )
+            return "".join(items) or "<li class='muted'>Aucune donnee disponible.</li>"
+
+        artifact_items = record_items("artifact", "artifact")
+        event_items = record_items("event", "event")
+        correlation_items = record_items("correlation", "correlation")
+
         delete_all = f"""<form method="post" action="/data"
 data-confirm="Supprimer tous les rapports, historiques et missions ? Cette action est irréversible.">
 {self._token()}<input type="hidden" name="scope" value="all">
@@ -1469,10 +1582,16 @@ data-confirm="Supprimer tous les rapports, historiques et missions ? Cette actio
 éléments stockés par recon SC.</p><div class="tabs">
 <button class="tab-button active" type="button" data-tab="reports">Rapports</button>
 <button class="tab-button" type="button" data-tab="history">Historiques</button>
+<button class="tab-button" type="button" data-tab="artifacts">Artefacts</button>
+<button class="tab-button" type="button" data-tab="timeline">Timeline</button>
+<button class="tab-button" type="button" data-tab="correlations">CorrÃ©lations</button>
 <button class="tab-button" type="button" data-tab="missions">Missions</button>
 <button class="tab-button" type="button" data-tab="cleanup">Nettoyage</button></div>
 <div class="tab-panel active" data-panel="reports"><ul class="clean">{report_items}</ul></div>
 <div class="tab-panel" data-panel="history"><ul class="clean">{histories}</ul></div>
+<div class="tab-panel" data-panel="artifacts"><ul class="clean">{artifact_items}</ul></div>
+<div class="tab-panel" data-panel="timeline">{_timeline_preview(20)}<ul class="clean">{event_items}</ul></div>
+<div class="tab-panel" data-panel="correlations">{_correlation_preview(20)}<ul class="clean">{correlation_items}</ul></div>
 <div class="tab-panel" data-panel="missions"><ul class="clean">{mission_items}</ul></div>
 <div class="tab-panel" data-panel="cleanup"><div class="notice error">
 Cette action efface toutes les données générées, mais pas le code du projet.</div>
@@ -1490,6 +1609,7 @@ Cette action efface toutes les données générées, mais pas le code du projet.
                 histories = delete_all_history()
                 reports = delete_all_reports()
                 missions = delete_all_missions()
+                delete_all_records()
                 self.state.message = (
                     f"{histories} historique(s), {reports} rapport(s) et "
                     f"{missions} mission(s) supprimé(s)."
@@ -1524,6 +1644,13 @@ Cette action efface toutes les données générées, mais pas le code du projet.
                     self.state.message = "Mission supprimée."
                 else:
                     raise ValueError("Action de mission inconnue.")
+            elif scope in {"artifact", "event", "correlation"}:
+                path = self._stored_path(list_records(scope), name)
+                if operation == "delete":
+                    delete_record(path)
+                    self.state.message = "Donnee structuree supprimee."
+                else:
+                    raise ValueError("Action de donnee structuree inconnue.")
             else:
                 raise ValueError("Type de donnée inconnu.")
         except (ValueError, OSError) as exc:
