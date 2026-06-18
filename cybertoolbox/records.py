@@ -145,6 +145,7 @@ def save_recon_records(
                 )
             )
             correlations.extend(_correlations_for_artifact(artifact))
+    correlations.extend(_cross_correlations(artifacts))
 
     saved_artifacts = [_save_and_load(item, root) for item in artifacts]
     saved_events = [_save_and_load(item, root) for item in events]
@@ -298,6 +299,79 @@ def _correlations_for_artifact(artifact: Artifact) -> list[Correlation]:
     return correlations
 
 
+def _cross_correlations(artifacts: list[Artifact]) -> list[Correlation]:
+    correlations: list[Correlation] = []
+    services_by_host: dict[str, list[Artifact]] = {}
+    devices_by_value = {
+        artifact.value: artifact
+        for artifact in artifacts
+        if artifact.kind == "device" and artifact.value
+    }
+    for artifact in artifacts:
+        if artifact.kind != "service":
+            continue
+        address = _first(artifact.data, "address", "ip", "host")
+        if address:
+            services_by_host.setdefault(address, []).append(artifact)
+
+    for address, services in services_by_host.items():
+        ports = {_safe_int(item.data.get("port")) for item in services}
+        ports.discard(0)
+        related = [item.id for item in services]
+        if address in devices_by_value:
+            related.append(devices_by_value[address].id)
+        evidence = [item.summary for item in services]
+        if len(ports) >= 3:
+            correlations.append(
+                Correlation(
+                    title="Surface de services multiple",
+                    hypothesis=f"{address} expose plusieurs services observables: {', '.join(str(port) for port in sorted(ports))}.",
+                    confidence="moyenne",
+                    severity="attention",
+                    related_artifacts=related,
+                    evidence=evidence,
+                    recommendations=["Verifier le besoin de chaque service et reduire l'exposition au strict necessaire."],
+                )
+            )
+        if 445 in ports and ports & {80, 443, 5000, 5001}:
+            correlations.append(
+                Correlation(
+                    title="NAS probable",
+                    hypothesis=f"{address} combine SMB et interface web, profil compatible avec un NAS ou partage de fichiers.",
+                    confidence="moyenne",
+                    severity="attention",
+                    related_artifacts=related,
+                    evidence=evidence,
+                    recommendations=["Verifier les partages publics, les comptes invites et les mises a jour du service."],
+                )
+            )
+        if 53 in ports and ports & {80, 443}:
+            correlations.append(
+                Correlation(
+                    title="Routeur ou DNS probable",
+                    hypothesis=f"{address} expose DNS et une interface web, profil compatible avec une passerelle ou un service DNS.",
+                    confidence="moyenne",
+                    severity="info",
+                    related_artifacts=related,
+                    evidence=evidence,
+                    recommendations=["Documenter le role de l'equipement et limiter l'administration au reseau autorise."],
+                )
+            )
+        if 554 in ports and ports & {80, 443, 8080}:
+            correlations.append(
+                Correlation(
+                    title="Camera probable",
+                    hypothesis=f"{address} expose RTSP et une interface web, profil compatible avec une camera ou un flux multimedia.",
+                    confidence="moyenne",
+                    severity="attention",
+                    related_artifacts=related,
+                    evidence=evidence,
+                    recommendations=["Ouvrir le flux uniquement s'il est volontairement public ou avec un acces legitime fourni."],
+                )
+            )
+    return correlations
+
+
 def _first(item: dict[str, Any], *keys: str) -> str:
     for key in keys:
         value = item.get(key)
@@ -313,6 +387,13 @@ def _has_negative_signal(item: dict[str, Any]) -> bool:
 
 def _port_risk(port: str) -> str:
     return "attention" if str(port) in {"21", "23", "445", "3389", "5900", "6379"} else "info"
+
+
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _event_level(risk: str) -> str:

@@ -302,6 +302,10 @@ border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900;text-transfor
 .timeline{display:grid;gap:10px}.timeline-item{border-left:2px solid var(--line);padding:8px 0 8px 14px}
 .timeline-item strong{display:block}.correlation-card{border:1px solid var(--line);border-radius:var(--radius);
 padding:12px;background:var(--field);display:grid;gap:8px}
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.filter-row a{border:1px solid var(--line);
+border-radius:999px;padding:7px 10px;color:var(--text);text-decoration:none;background:var(--field)}
+.record-card{display:grid;gap:8px;border:1px solid var(--line);border-radius:var(--radius);padding:12px;background:var(--field)}
+.record-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
 pre{max-width:100%;overflow:auto;
 white-space:pre-wrap;word-break:break-word;padding:16px;border:1px solid var(--line);
 background:var(--panel);backdrop-filter:blur(18px) saturate(130%);color:#c9fbe0}ul.clean{padding:0;list-style:none}ul.clean li{
@@ -485,6 +489,54 @@ def _timeline_preview(limit: int = 5) -> str:
     return "<div class='timeline'>" + "".join(events) + "</div>"
 
 
+def _record_filters() -> str:
+    return """<div class="filter-row">
+<a href="/reports">Tout</a><a href="/reports#timeline">Timeline</a>
+<a href="/reports#correlations">Corrélations</a><a href="/devices">Appareils</a>
+<a href="/scanner">Scanner</a></div>"""
+
+
+def _artifact_board(limit: int = 40) -> str:
+    cards = []
+    for path in list_records("artifact")[:limit]:
+        payload = load_record(path)
+        risk = escape(str(payload.get("risk", "info")))
+        kind = escape(str(payload.get("kind", "artifact")))
+        confidence = escape(str(payload.get("confidence", "faible")))
+        cards.append(
+            "<article class='record-card'>"
+            f"<span class='risk-badge' data-risk='{risk}'>{risk}</span>"
+            f"<strong>{escape(str(payload.get('title', 'Artefact')))}</strong>"
+            f"<span>{escape(str(payload.get('summary', '')))}</span>"
+            f"<span class='muted'>{kind} · confiance {confidence} · {escape(str(payload.get('created_at', '')).replace('T', ' '))}</span>"
+            "<div class='action-row'><a href='/reports#timeline'>Timeline</a>"
+            "<a href='/reports#correlations'>Corréler</a></div></article>"
+        )
+    if not cards:
+        return "<p class='muted'>Aucun artefact disponible.</p>"
+    return "<div class='record-grid'>" + "".join(cards) + "</div>"
+
+
+def _timeline_board(limit: int = 50) -> str:
+    rows = []
+    for path in list_records("event")[:limit]:
+        payload = load_record(path)
+        level = escape(str(payload.get("level", "info")))
+        event_type = escape(str(payload.get("event_type", "event")))
+        source = escape(str(payload.get("source", "")))
+        link = escape(str(payload.get("link") or "/reports"))
+        rows.append(
+            "<div class='timeline-item'>"
+            f"<span class='status-badge' data-level='{level}'>{level}</span>"
+            f"<strong>{escape(str(payload.get('description', 'Evenement')))}</strong>"
+            f"<span class='muted'>{escape(str(payload.get('created_at', '')).replace('T', ' '))} · {source} · {event_type}</span>"
+            f"<div class='action-row'><a href='{link}'>Ouvrir</a><a href='/reports#correlations'>Corréler</a></div></div>"
+        )
+    if not rows:
+        return "<p class='muted'>Aucun événement enregistre pour le moment.</p>"
+    return _record_filters() + "<div class='timeline' id='timeline'>" + "".join(rows) + "</div>"
+
+
 def _correlation_preview(limit: int = 5) -> str:
     cards = []
     for path in list_records("correlation")[:limit]:
@@ -507,6 +559,32 @@ def _correlation_preview(limit: int = 5) -> str:
     if not cards:
         return "<p class='muted'>Aucune correlation generee pour le moment.</p>"
     return "<div class='timeline'>" + "".join(cards) + "</div>"
+
+
+def _correlation_board(limit: int = 50) -> str:
+    cards = []
+    for path in list_records("correlation")[:limit]:
+        payload = load_record(path)
+        severity = escape(str(payload.get("severity", "info")))
+        confidence = escape(str(payload.get("confidence", "faible")))
+        evidence = payload.get("evidence", [])
+        recommendations = payload.get("recommendations", [])
+        evidence_html = _value(evidence[:4] if isinstance(evidence, list) else evidence)
+        recommendation_html = _value(recommendations[:3] if isinstance(recommendations, list) else recommendations)
+        cards.append(
+            "<article class='correlation-card'>"
+            f"<span class='risk-badge' data-risk='{severity}'>{severity}</span>"
+            f"<strong>{escape(str(payload.get('title', 'Correlation')))}</strong>"
+            f"<span>{escape(str(payload.get('hypothesis', '')))}</span>"
+            f"<span class='muted'>Confiance {confidence} · {escape(str(payload.get('created_at', '')).replace('T', ' '))}</span>"
+            f"<details><summary>Preuves</summary>{evidence_html}</details>"
+            f"<details><summary>Recommandations</summary>{recommendation_html}</details>"
+            "<div class='action-row'><a href='/reports'>Ajouter au rapport</a><a href='/devices'>Voir appareils</a></div>"
+            "</article>"
+        )
+    if not cards:
+        return "<p class='muted'>Aucune corrélation générée pour le moment.</p>"
+    return _record_filters() + "<div class='record-grid' id='correlations'>" + "".join(cards) + "</div>"
 
 
 def _device_inventory() -> list[dict[str, Any]]:
@@ -1804,9 +1882,9 @@ data-confirm="Supprimer tous les rapports, historiques et missions ? Cette actio
 <button class="tab-button" type="button" data-tab="cleanup">Nettoyage</button></div>
 <div class="tab-panel active" data-panel="reports"><ul class="clean">{report_items}</ul></div>
 <div class="tab-panel" data-panel="history"><ul class="clean">{histories}</ul></div>
-<div class="tab-panel" data-panel="artifacts"><ul class="clean">{artifact_items}</ul></div>
-<div class="tab-panel" data-panel="timeline">{_timeline_preview(20)}<ul class="clean">{event_items}</ul></div>
-<div class="tab-panel" data-panel="correlations">{_correlation_preview(20)}<ul class="clean">{correlation_items}</ul></div>
+<div class="tab-panel" data-panel="artifacts">{_artifact_board()}<h3>Gestion</h3><ul class="clean">{artifact_items}</ul></div>
+<div class="tab-panel" data-panel="timeline">{_timeline_board()}<h3>Gestion</h3><ul class="clean">{event_items}</ul></div>
+<div class="tab-panel" data-panel="correlations">{_correlation_board()}<h3>Gestion</h3><ul class="clean">{correlation_items}</ul></div>
 <div class="tab-panel" data-panel="missions"><ul class="clean">{mission_items}</ul></div>
 <div class="tab-panel" data-panel="cleanup"><div class="notice error">
 Cette action efface toutes les données générées, mais pas le code du projet.</div>

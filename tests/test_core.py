@@ -67,6 +67,7 @@ from cybertoolbox.reports import (
 from cybertoolbox.records import (
     delete_all_records,
     list_records,
+    load_record,
     records_summary,
     save_recon_records,
 )
@@ -134,6 +135,8 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("scanner-card", page)
         self.assertIn("device-card", page)
         self.assertIn("profile-section", page)
+        self.assertIn("record-card", page)
+        self.assertIn("filter-row", page)
         self.assertNotIn("CyclOSM", page)
         self.assertNotIn("Humanitarian OpenStreetMap", page)
         self.assertIn("await fetch", page)
@@ -627,7 +630,10 @@ class LabTests(unittest.TestCase):
             "ports": {
                 "title": "Ports TCP",
                 "engine": "test",
-                "items": [{"address": "192.168.1.10", "port": 445, "service": "smb"}],
+                "items": [
+                    {"address": "192.168.1.10", "port": 445, "service": "smb"},
+                    {"address": "192.168.1.10", "port": 80, "service": "http"},
+                ],
             },
             "wifi": {
                 "title": "Wi-Fi visible",
@@ -638,10 +644,15 @@ class LabTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             saved = save_recon_records(categories, subject="192.168.1.0/24", root=root)
-            self.assertEqual(len(saved["artifacts"]), 3)
-            self.assertEqual(len(saved["events"]), 3)
-            self.assertGreaterEqual(len(saved["correlations"]), 2)
-            self.assertEqual(records_summary(root)["artifacts"], 3)
+            self.assertEqual(len(saved["artifacts"]), 4)
+            self.assertEqual(len(saved["events"]), 4)
+            self.assertGreaterEqual(len(saved["correlations"]), 3)
+            self.assertEqual(records_summary(root)["artifacts"], 4)
+            correlation_titles = {
+                load_record(path, root)["title"]
+                for path in list_records("correlation", root)
+            }
+            self.assertIn("NAS probable", correlation_titles)
             artifact_paths = list_records("artifact", root)
             self.assertTrue(artifact_paths[0].read_text(encoding="utf-8").strip().startswith("{"))
             self.assertGreater(delete_all_records(root=root), 0)
