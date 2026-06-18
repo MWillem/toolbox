@@ -34,6 +34,7 @@ from .labs.hashing import hash_text
 from .labs.network_info import dns_lookup, inspect_tls
 from .labs.passwords import analyze_password
 from .labs.payloads import analyze_payload_file
+from .labs.packet_observer import observe_packets
 from .labs.script_analysis import analyze_script
 from .labs.system_audit import audit_system
 from .labs.cracking import crack_wpa2_demo, derive_wpa2_pmk
@@ -747,6 +748,37 @@ def _wireless_result(value: dict[str, Any]) -> str:
     return _value(value)
 
 
+def _packet_result(value: dict[str, Any]) -> str:
+    packets = value.get("packets", [])
+    stats = value.get("statistics", {})
+    timeline = value.get("timeline", [])
+    packet_cards = []
+    if isinstance(packets, list):
+        for packet in packets[:20]:
+            if not isinstance(packet, dict):
+                continue
+            packet_cards.append(
+                "<article class='record-card'>"
+                f"<span class='status-badge'>{escape(str(packet.get('protocol', '')))}</span>"
+                f"<strong>{escape(str(packet.get('summary', 'Paquet observe')))}</strong>"
+                f"<span class='muted'>{escape(str(packet.get('direction', '')))} · "
+                f"{escape(str(packet.get('source_port', '-')))} -> {escape(str(packet.get('destination_port', '-')))}</span>"
+                f"{_value({'flags': packet.get('flags', []), 'raw': packet.get('raw', '')})}"
+                "</article>"
+            )
+    timeline_html = _value(timeline if isinstance(timeline, list) else [])
+    packet_html = "".join(packet_cards) or "<p class='muted'>Aucun paquet reconnu.</p>"
+    return (
+        "<div class='profile-tabs'>"
+        f"<section class='profile-section'><h3>Statistiques</h3>{_value(stats)}</section>"
+        f"<section class='profile-section'><h3>Timeline humaine</h3>{timeline_html}</section>"
+        "<section class='profile-section'><h3>Paquets récents</h3>"
+        f"<div class='record-grid'>{packet_html}</div></section>"
+        f"<section class='profile-section'><h3>Limites</h3>{_value(value.get('limitations', []))}</section>"
+        "</div>"
+    )
+
+
 def _save_wireless_records(result: dict[str, Any], action: str) -> dict[str, int]:
     if action == "wifi":
         categories = {
@@ -768,6 +800,40 @@ def _save_wireless_records(result: dict[str, Any], action: str) -> dict[str, int
         return {"artifacts": 0, "events": 0, "correlations": 0}
     saved = save_recon_records(categories, subject=f"{action}-local", scope="local_authorized")
     return {key: len(saved[key]) for key in ("artifacts", "events", "correlations")}
+
+
+def _save_packet_records(result: dict[str, Any]) -> dict[str, int]:
+    packets = result.get("packets", [])
+    stats = result.get("statistics", {})
+    packet_count = len(packets) if isinstance(packets, list) else 0
+    artifact = Artifact(
+        kind="packet_observation",
+        source="packet_observer",
+        title="Observation trafic",
+        summary=f"{packet_count} ligne(s) de trafic analysee(s) en mode pedagogique.",
+        value=str(packet_count),
+        confidence="moyenne" if packet_count else "faible",
+        risk="info",
+        tags=["traffic", "packet", "timeline"],
+        data={"statistics": stats, "packets": packets[:50] if isinstance(packets, list) else []},
+    )
+    save_record(artifact)
+    events = 0
+    for event in result.get("timeline", [])[:50]:
+        if not isinstance(event, dict):
+            continue
+        save_record(
+            TimelineEvent(
+                source="packet_observer",
+                event_type=str(event.get("type") or "packet").lower(),
+                description=str(event.get("description") or "Observation trafic"),
+                level=str(event.get("level") or "info"),
+                artifact_id=artifact.id,
+                link="/tools",
+            )
+        )
+        events += 1
+    return {"artifacts": 1, "events": events, "correlations": 0}
 
 
 def _field(data: dict[str, list[str]], name: str, default: str = "") -> str:
@@ -1347,6 +1413,8 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             body = _profile_result(self.state.result)
         elif route == "/wireless":
             body = _wireless_result(self.state.result)
+        elif route == "/tools" and self.state.result.get("mode") == "log_or_demo":
+            body = _packet_result(self.state.result)
         else:
             body = _value(self.state.result)
         return f"<section class='card full'><h2>{escape(self.state.result_title)}</h2>{body}</section>"
@@ -2157,6 +2225,16 @@ placeholder="Texte, domaine ou chemin relatif, ex. lab_workspace/suspicious.log"
 Pour protéger l'appareil, le GUI analyse uniquement les fichiers présents dans
 le dossier de la toolbox. Les chemins absolus extérieurs sont refusés.</p>
 <a href="/lab">Préparer les artefacts du laboratoire</a></section>
+<section class="card full"><span class="eyebrow">Mini Wireshark pedagogique</span>
+<h2>Packet Observer</h2><p class="muted">Collez quelques lignes de trafic ou laissez vide pour
+charger une demo. L'outil lit des logs fournis : il ne capture pas d'interface
+reseau et ne tente jamais de dechiffrer HTTPS.</p>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="packet">
+<label>Flux ou lignes de log<textarea name="value" rows="7"
+placeholder="192.168.1.10 -> 140.82.121.4 TCP 51544 443 SYN github.com"></textarea></label>
+<label class="check"><input type="checkbox" name="keep" checked>Ajouter a la timeline et aux donnees structurees.</label>
+<button type="submit">ANALYSER LE TRAFIC</button></form></section>
 {self._result("/tools")}</div>"""
         self._send(render_layout("Outils", body))
 
@@ -2189,6 +2267,10 @@ le dossier de la toolbox. Les chemins absolus extérieurs sont refusés.</p>
                 result = {"encoded": base64_encode(value)}
             elif action == "b64decode":
                 result = {"decoded": base64_decode(value)}
+            elif action == "packet":
+                result = observe_packets(value)
+                if _checked(data, "keep"):
+                    result["records"] = _save_packet_records(result)
             else:
                 raise ValueError("Outil inconnu.")
             self.state.result_title = "Résultat technique"

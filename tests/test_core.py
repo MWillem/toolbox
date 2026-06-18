@@ -35,6 +35,7 @@ from cybertoolbox.labs.cracking import (
     derive_wpa2_pmk,
 )
 from cybertoolbox.labs.payloads import analyze_payload_file, create_harmless_payload
+from cybertoolbox.labs.packet_observer import observe_packets
 from cybertoolbox.labs.script_analysis import analyze_script
 from cybertoolbox.labs.wireless import (
     _normalize_bluetooth_items,
@@ -447,6 +448,17 @@ class LabTests(unittest.TestCase):
 
     def test_wifi_security_lesson_flags_open_networks(self):
         self.assertTrue(any("ouvert" in item.lower() for item in wifi_security_lesson("OPEN")))
+
+    def test_packet_observer_summarizes_demo_traffic(self):
+        result = observe_packets()
+        self.assertEqual(result["mode"], "log_or_demo")
+        self.assertGreater(result["statistics"]["total"], 0)
+        self.assertIn("TCP", result["statistics"]["protocols"])
+        self.assertIn("UDP", result["statistics"]["protocols"])
+        summaries = " ".join(packet["summary"] for packet in result["packets"])
+        self.assertIn("TCP SYN", summaries)
+        self.assertIn("requete DNS", summaries)
+        self.assertTrue(any("HTTPS" in item for item in result["limitations"]))
 
     def test_harmless_payload_can_be_analyzed(self):
         with tempfile.TemporaryDirectory() as directory:
