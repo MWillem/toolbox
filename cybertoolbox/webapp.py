@@ -272,6 +272,13 @@ grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.recon-fields 
 .recon-result{display:grid;gap:14px}
 .recon-category{padding:14px;border:1px solid var(--line);background:var(--panel);
 backdrop-filter:blur(18px) saturate(130%)}.recon-category h3{margin:0 0 10px;color:var(--signal)}
+.scanner-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.scanner-card{display:grid;gap:12px;border:1px solid var(--line);border-radius:var(--radius);
+padding:16px;background:var(--field)}.scanner-card h3{margin:0;color:var(--signal)}
+.scanner-card .tool-head{display:flex;align-items:center;gap:12px}.scanner-card .quick-icon{flex:0 0 auto}
+.scanner-card form{display:grid;gap:10px}.scanner-card .meta-row{display:flex;gap:8px;flex-wrap:wrap}
+.scanner-card .button-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.scanner-card button{width:100%}
 .action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.action-row a{padding:7px 10px;
 border:1px solid var(--line);border-radius:999px;background:rgba(var(--panel-rgb),.5)}
 .status-badge,.risk-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);
@@ -1235,47 +1242,98 @@ dans le terminal avec <code>run.bat watchdog</code>.</p></section></div>"""
         network_value = escape(str(form_state.get("network") or default_network))
         target_value = escape(str(form_state.get("target") or form_state.get("subject") or ""))
         ports_value = escape(str(form_state.get("ports") or settings.default_ports))
-        body = f"""<div class="grid"><section class="card full"><h2>Recon autorisée</h2>
-<p class="muted">Active une ou plusieurs sources de reconnaissance locale.
-Wi-Fi et Bluetooth utilisent uniquement les API autorisées du système :
-aucune connexion, capture, désauthentification ou appairage n'est effectué.</p>
+        view_select = f"""<label>Vue des résultats<select name="view">
+<option value="category"{selected("category")}>Catégories séparées</option>
+<option value="table"{selected("table")}>Tableaux</option>
+<option value="list"{selected("list")}>Liste avec actions</option>
+</select></label>"""
+        consent = (
+            f'<label class="check"><input type="checkbox" name="authorized" required{checked("authorized")}>'
+            "Je confirme disposer de l'autorisation sur ce périmètre.</label>"
+        )
+        keep = (
+            f'<label class="check"><input type="checkbox" name="keep"{checked("keep")}>'
+            "Conserver et produire des données réutilisables.</label>"
+        )
+        body = f"""<div class="grid"><section class="card full"><span class="eyebrow">Scanner</span>
+<h2>Recon autorisée</h2><p class="muted">Chaque carte lance une collecte courte,
+lisible et réutilisable. Wi-Fi et Bluetooth utilisent uniquement les API locales
+du système : aucune connexion, capture, désauthentification ou appairage.</p>
+<div class="scanner-grid">
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">IP</span>
+<div><h3>Scan réseau local</h3><p class="muted">Hôtes actifs sur un réseau privé autorisé.</p></div></div>
+<div class="meta-row"><span class="risk-badge">autorisé</span><span class="status-badge">local</span></div>
+<form method="post" action="/recon">{self._token()}<input type="hidden" name="source_discover" value="1">
+<input type="hidden" name="subject" value="{subject_value}">
+<label>Réseau local autorisé<input name="network" value="{network_value}" placeholder="192.168.1.0/24"></label>
+{view_select}{consent}{keep}<button type="submit">LANCER</button></form></article>
+
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">WIFI</span>
+<div><h3>Wi-Fi Analyzer</h3><p class="muted">Réseaux visibles par cet appareil, position approximative seulement.</p></div></div>
+<div class="meta-row"><span class="risk-badge">observation</span><span class="status-badge">radio</span></div>
+<form method="post" action="/recon">{self._token()}<input type="hidden" name="source_wifi" value="1">
+<input type="hidden" name="subject" value="wifi-local">{view_select}{consent}{keep}
+<button type="submit">LANCER</button></form></article>
+
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">BT</span>
+<div><h3>Bluetooth Radar</h3><p class="muted">Appareils connus ou visibles selon ce que l'OS expose.</p></div></div>
+<div class="meta-row"><span class="risk-badge">observation</span><span class="status-badge">proximité</span></div>
+<form method="post" action="/recon">{self._token()}<input type="hidden" name="source_bluetooth" value="1">
+<input type="hidden" name="subject" value="bluetooth-local">{view_select}{consent}{keep}
+<button type="submit">LANCER</button></form></article>
+
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">TCP</span>
+<div><h3>Scan ports autorisé</h3><p class="muted">Ports TCP sur une cible privée ou explicitement autorisée.</p></div></div>
+<div class="meta-row"><span class="risk-badge">autorisé</span><span class="status-badge">service</span></div>
+<form method="post" action="/recon">{self._token()}<input type="hidden" name="source_ports" value="1">
+<input type="hidden" name="subject" value="{target_value}">
+<label>Cible<input name="target" value="{target_value}" placeholder="192.168.1.25 ou localhost"></label>
+<label>Ports<input name="ports" value="{ports_value}" placeholder="22,80,443 ou 1-1024"></label>
+{view_select}{consent}{keep}<button type="submit">LANCER</button></form></article>
+
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">HTTP</span>
+<div><h3>Site public passif</h3><p class="muted">Lecture des en-têtes HTTP sans injection ni fuzzing.</p></div></div>
+<div class="meta-row"><span class="risk-badge">passif</span><span class="status-badge">web</span></div>
+<form method="post" action="/recon">{self._token()}<input type="hidden" name="source_http" value="1">
+<input type="hidden" name="subject" value="{target_value}">
+<label>URL ou hôte<input name="target" value="{target_value}" placeholder="https://example.org"></label>
+{view_select}{consent}{keep}<button type="submit">LANCER</button></form></article>
+
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">PKT</span>
+<div><h3>Packet Observer</h3><p class="muted">Préparation d'une vue pédagogique type mini Wireshark.</p></div></div>
+<div class="meta-row"><span class="risk-badge">lecture</span><span class="status-badge">à venir</span></div>
+<p class="muted">La capture trafic sera limitée au lab/local autorisé et ne tentera jamais de déchiffrer HTTPS.</p>
+<a class="button" href="/tools">VOIR OUTILS</a></article>
+</div></section>
+
+<section class="card full"><details><summary><strong>Combiner plusieurs sources</strong></summary>
 <form method="post" action="/recon">{self._token()}
 <div class="quick-grid">
 <label class="quick-toggle"><input type="checkbox" name="source_discover"{checked("source_discover")}>
-<span class="quick-icon">IP</span><strong>Réseau IP</strong><span>Hôtes actifs sur un réseau privé</span></label>
+<span class="quick-icon">IP</span><strong>Réseau IP</strong><span>Hôtes actifs</span></label>
 <label class="quick-toggle"><input type="checkbox" name="source_ports"{checked("source_ports")}>
-<span class="quick-icon">TCP</span><strong>Ports TCP</strong><span>Services ouverts sur une cible privée</span></label>
+<span class="quick-icon">TCP</span><strong>Ports TCP</strong><span>Services ouverts</span></label>
 <label class="quick-toggle"><input type="checkbox" name="source_wifi"{checked("source_wifi")}>
-<span class="quick-icon">WIFI</span><strong>Wi-Fi</strong><span>Réseaux visibles par cet appareil</span></label>
+<span class="quick-icon">WIFI</span><strong>Wi-Fi</strong><span>Réseaux visibles</span></label>
 <label class="quick-toggle"><input type="checkbox" name="source_bluetooth"{checked("source_bluetooth")}>
-<span class="quick-icon">BT</span><strong>Bluetooth</strong><span>Appareils connus ou visibles par l'OS</span></label>
+<span class="quick-icon">BT</span><strong>Bluetooth</strong><span>Inventaire OS</span></label>
 <label class="quick-toggle"><input type="checkbox" name="source_http"{checked("source_http")}>
-<span class="quick-icon">HTTP</span><strong>HTTP</strong><span>En-têtes exposés, sans injection</span></label>
-</div>
-<input type="hidden" name="subject" value="{subject_value}">
-<div class="recon-fields">
-<label data-recon-field="network">Réseau local autorisé
+<span class="quick-icon">HTTP</span><strong>HTTP</strong><span>En-têtes passifs</span></label>
+</div><input type="hidden" name="subject" value="{subject_value}">
+<div class="recon-fields"><label data-recon-field="network">Réseau local autorisé
 <input name="network" value="{network_value}" placeholder="192.168.1.0/24"></label>
 <label data-recon-field="target">Cible IP, nom local ou URL
 <input name="target" value="{target_value}" placeholder="192.168.1.25 ou http://192.168.1.25"></label>
 <label data-recon-field="ports">Ports
-<input name="ports" value="{ports_value}" placeholder="22,80,443 ou 1-1024"></label>
-</div>
-<label>Vue des résultats<select name="view">
-<option value="category"{selected("category")}>Catégories séparées</option>
-<option value="table"{selected("table")}>Tableaux</option>
-<option value="list"{selected("list")}>Liste avec actions</option>
-</select></label>
-<label class="check"><input type="checkbox" name="authorized" required{checked("authorized")}>
-Je confirme disposer de l'autorisation sur ce périmètre.</label>
-<label class="check"><input type="checkbox" name="keep"{checked("keep")}>
-Conserver dans l'historique local.</label>
-<button type="submit">EXÉCUTER LA RECON</button></form></section>
+<input name="ports" value="{ports_value}" placeholder="22,80,443 ou 1-1024"></label></div>
+{view_select}{consent}{keep}<button type="submit">EXÉCUTER LA RECON COMBINÉE</button></form></details></section>
+
 <section class="card full"><h2>Conditions</h2><ul class="clean">
 <li>IP/ports : uniquement réseau privé, localhost ou cible explicitement autorisée.</li>
 <li>Wi-Fi : nécessite les droits système/localisation selon Windows, Linux ou Termux.</li>
 <li>Bluetooth : inventaire OS uniquement, sans appairage ni interaction active.</li>
-<li>HTTP : lecture passive d'en-têtes sur une URL fournie.</li></ul></section>
+<li>HTTP : lecture passive d'en-têtes sur une URL fournie.</li>
+<li>Trafic : lecture pédagogique prévue, sans déchiffrement HTTPS.</li></ul></section>
 {self._result("/recon")}</div>"""
         self._send(render_layout("Scanner", body))
 

@@ -130,6 +130,8 @@ class SafetyTests(unittest.TestCase):
         self.assertIn('data-mode-track="app"', page)
         self.assertIn('data-mode-track="map"', page)
         self.assertIn("quick-toggle", page)
+        self.assertIn("scanner-grid", page)
+        self.assertIn("scanner-card", page)
         self.assertNotIn("CyclOSM", page)
         self.assertNotIn("Humanitarian OpenStreetMap", page)
         self.assertIn("await fetch", page)
