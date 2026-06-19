@@ -80,7 +80,7 @@ from cybertoolbox.watchdog import (
     answer_matches,
     contains_expected_indicators,
 )
-from cybertoolbox.webapp import _qr_payload, _value, _workspace_path, render_layout, render_topology
+from cybertoolbox.webapp import _nfc_payload, _qr_payload, _value, _workspace_path, render_layout, render_topology
 from cybertoolbox.cli import interactive_menu, print_menu_item, responsive_banner
 from cybertoolbox.context_info import local_context
 from cybertoolbox.enrich_profile import calculate_digital_shadow_score
@@ -246,6 +246,13 @@ class LabTests(unittest.TestCase):
             destination = Path(directory) / "tag.json"
             self.assertTrue(clone_tag("01:02:03:04", parsed, str(destination)))
             self.assertTrue(destination.exists())
+
+    def test_nfc_payload_decodes_lab_ndef_hex(self):
+        result = _nfc_payload({"nfc_mode": ["parse_hex"], "value": ["D10105540266724F4B"]})
+        self.assertEqual(result["mode"], "nfc_tool")
+        self.assertEqual(result["result"]["kind"], "text")
+        self.assertEqual(result["result"]["value"], "OK")
+        self.assertTrue(any("Aucun clonage" in item for item in result["limitations"]))
 
     def test_bluetooth_oui_table_and_lookup(self):
         manufacturers = set(OUI_MANUFACTURERS.values())

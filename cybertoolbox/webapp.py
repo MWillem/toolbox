@@ -33,6 +33,7 @@ from .labs.log_analysis import analyze_log
 from .labs.network import discover_hosts, local_ipv4_network, scan_ports
 from .labs.hashing import hash_text
 from .labs.network_info import dns_lookup, inspect_tls
+from .labs.nfc_tools import nfc_security_lesson, parse_ndef_record, scan_nfc, write_nfc_text, write_nfc_url
 from .labs.passwords import analyze_password
 from .labs.payloads import analyze_payload_file
 from .labs.packet_observer import observe_packets
@@ -826,6 +827,17 @@ def _qr_result(value: dict[str, Any]) -> str:
     )
 
 
+def _nfc_result(value: dict[str, Any]) -> str:
+    return (
+        "<div class='profile-tabs'>"
+        f"<section class='profile-section'><h3>Resultat</h3>{_value(value.get('result', {}))}</section>"
+        f"<section class='profile-section'><h3>Historique</h3>{_value(value.get('history', []))}</section>"
+        f"<section class='profile-section'><h3>Permissions</h3>{_value(value.get('permissions', []))}</section>"
+        f"<section class='profile-section'><h3>Limites</h3>{_value(value.get('limitations', []))}</section>"
+        "</div>"
+    )
+
+
 def _save_wireless_records(result: dict[str, Any], action: str) -> dict[str, int]:
     if action == "wifi":
         categories = {
@@ -1001,6 +1013,58 @@ def _qr_payload(data: dict[str, list[str]]) -> dict[str, Any]:
             "Le QR masque son contenu avant lecture : verifier le domaine avant ouverture.",
             "Les payloads generes ici sont pedagogiques et inoffensifs.",
             "Aucune donnee n'est envoyee vers Internet pour generer ce QR.",
+        ],
+    }
+
+
+def _nfc_payload(data: dict[str, list[str]]) -> dict[str, Any]:
+    mode = _field(data, "nfc_mode", "scan")
+    value = _field(data, "value")
+    if mode == "scan":
+        result = scan_nfc(int(_field(data, "nfc_timeout", "5") or "5"))
+        summary = "Scan NFC local."
+    elif mode == "parse_hex":
+        cleaned = value.replace(" ", "").replace(":", "")
+        if not cleaned:
+            raise ValueError("Indiquez des donnees NDEF hexadecimales.")
+        result = parse_ndef_record(bytes.fromhex(cleaned))
+        summary = "NDEF decode en mode lab."
+    elif mode == "write_text":
+        result = {"written": write_nfc_text(value), "type": "text", "value": value}
+        summary = "Ecriture NFC texte demandee."
+    elif mode == "write_url":
+        result = {"written": write_nfc_url(value), "type": "url", "value": value}
+        summary = "Ecriture NFC URL demandee."
+    elif mode == "write_mission":
+        mission = "recon-sc://mission?name=" + quote(value or "mission")
+        result = {"written": write_nfc_text(mission), "type": "mission recon SC", "value": mission}
+        summary = "Ecriture NFC mission demandee."
+    elif mode == "lesson":
+        result = {"lesson": nfc_security_lesson()}
+        summary = "Lecon securite NFC."
+    else:
+        raise ValueError("Mode NFC inconnu.")
+    return {
+        "mode": "nfc_tool",
+        "summary": summary,
+        "result": result,
+        "history": [
+            {
+                "source": "nfc",
+                "type": mode,
+                "description": summary,
+                "level": "info",
+            }
+        ],
+        "permissions": [
+            "Mobile/Termux : installer Termux:API et autoriser NFC si l'appareil le propose.",
+            "Linux : lecteur compatible libnfc et permissions udev selon le materiel.",
+            "Windows/macOS : support automatique limite, utiliser le SDK du lecteur si necessaire.",
+        ],
+        "limitations": [
+            "Aucun clonage d'UID, emulation de badge ou contournement de controle d'acces.",
+            "Ecriture possible uniquement avec un outil local compatible et un tag autorise.",
+            "Mode lab recommande pour les donnees NDEF hexadecimales de demonstration.",
         ],
     }
 
@@ -1588,6 +1652,8 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             body = _packet_result(self.state.result)
         elif route == "/tools" and self.state.result.get("mode") == "qr_tool":
             body = _qr_result(self.state.result)
+        elif route == "/tools" and self.state.result.get("mode") == "nfc_tool":
+            body = _nfc_result(self.state.result)
         elif route == "/exposure" and self.state.result.get("mode") == "public_exposure":
             body = _public_exposure_result(self.state.result)
         else:
@@ -2457,6 +2523,23 @@ placeholder="https://example.org ou note de mission"></textarea></label>
 <label>Decoder un contenu Wi-Fi<textarea name="value" rows="2"
 placeholder="WIFI:T:WPA;S:Classe;P:secret;;"></textarea></label>
 <button type="submit">DECODER WIFI</button></form></section>
+<section class="card full"><span class="eyebrow">NFC Tools</span>
+<h2>Lire, ecrire ou decoder un tag</h2><p class="muted">Lecture locale si le materiel le permet,
+ecriture simple texte/URL/mission, parsing NDEF de lab et historique. Aucune emulation de badge.</p>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="nfc_tool">
+<label>Mode<select name="nfc_mode">
+<option value="scan">Lire un tag</option><option value="parse_hex">Decoder NDEF hex lab</option>
+<option value="write_text">Ecrire un texte</option><option value="write_url">Ecrire une URL</option>
+<option value="write_mission">Ecrire une mission recon SC</option>
+<option value="lesson">Lecon securite NFC</option></select></label>
+<label>Contenu, URL ou NDEF hex<textarea name="value" rows="4"
+placeholder="D10105540266724F4B ou https://example.org"></textarea></label>
+<label>Timeout lecture<input type="number" name="nfc_timeout" min="1" max="60" value="5"></label>
+<label class="check"><input type="checkbox" name="keep">Ajouter a la timeline locale.</label>
+<button type="submit">EXECUTER NFC</button></form>
+<div class="notice">Sur Termux, il faut Termux:API, le paquet termux-api et les permissions NFC/proximite selon Android.</div>
+</section>
 <section class="card full"><span class="eyebrow">Hash / Crypto pedagogique</span>
 <h2>Empreintes, encodage et chiffrement demo</h2><p class="muted">SHA-256, SHA-512,
 BLAKE2, MD5 pedagogique, detection de format probable, Base64 et XOR avec cle connue.</p>
@@ -2539,6 +2622,10 @@ placeholder="192.168.1.10 -> 140.82.121.4 TCP 51544 443 SYN github.com"></textar
                     "risk": {"level": "attention", "reason": "Un QR Wi-Fi peut contenir un secret reseau."},
                     "limitations": ["Ne partagez ce contenu qu'avec les personnes autorisees."],
                 }
+            elif action == "nfc_tool":
+                result = _nfc_payload(data)
+                if _checked(data, "keep"):
+                    result["records"] = _save_tool_record("nfc", "NFC Tools", result)
             elif action == "crypto_tool":
                 mode = _field(data, "crypto_mode", "hash")
                 algorithm = _field(data, "crypto_algorithm", "sha256")
