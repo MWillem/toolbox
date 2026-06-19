@@ -80,7 +80,7 @@ from cybertoolbox.watchdog import (
     answer_matches,
     contains_expected_indicators,
 )
-from cybertoolbox.webapp import _value, _workspace_path, render_layout, render_topology
+from cybertoolbox.webapp import _qr_payload, _value, _workspace_path, render_layout, render_topology
 from cybertoolbox.cli import interactive_menu, print_menu_item, responsive_banner
 from cybertoolbox.context_info import local_context
 from cybertoolbox.enrich_profile import calculate_digital_shadow_score
@@ -229,6 +229,13 @@ class LabTests(unittest.TestCase):
         self.assertEqual(decoded["ssid"], "Classe")
         self.assertEqual(decoded["password"], "secret")
         self.assertIn("██", generate_qr_text("CyberToolbox"))
+
+    def test_qr_payload_flags_plain_http_urls(self):
+        result = _qr_payload({"qr_mode": ["url"], "qr_text": ["http://example.org"]})
+        self.assertEqual(result["mode"], "qr_tool")
+        self.assertEqual(result["content"]["type"], "url")
+        self.assertEqual(result["risk"]["level"], "attention")
+        self.assertIn("HTTP", result["risk"]["reason"])
 
     def test_ndef_text_and_documentary_clone(self):
         raw = bytes([0xD1, 0x01, 0x05]) + b"T" + bytes([0x02]) + b"frOK"

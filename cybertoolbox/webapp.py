@@ -24,8 +24,9 @@ from .history import (
     rename_history,
     save_history,
 )
-from .labs.crypto_basics import base64_decode, base64_encode
+from .labs.crypto_basics import base64_decode, base64_encode, xor_decrypt, xor_encrypt
 from .labs.file_audit import audit_local_configuration, audit_path
+from .labs.hash_advanced import hash_generate, identify_hash
 from .labs.http_headers import analyze_headers, fetch_headers
 from .labs.local_lab import prepare_lab
 from .labs.log_analysis import analyze_log
@@ -36,6 +37,7 @@ from .labs.passwords import analyze_password
 from .labs.payloads import analyze_payload_file
 from .labs.packet_observer import observe_packets
 from .labs.public_exposure import inspect_public_exposure
+from .labs.qr_tools import decode_qr_wifi, generate_qr_text, generate_qr_vcard, generate_qr_wifi, read_qr_from_file
 from .labs.script_analysis import analyze_script
 from .labs.system_audit import audit_system
 from .labs.cracking import crack_wpa2_demo, derive_wpa2_pmk
@@ -811,6 +813,19 @@ def _public_exposure_result(value: dict[str, Any]) -> str:
     )
 
 
+def _qr_result(value: dict[str, Any]) -> str:
+    preview = value.get("preview", "")
+    preview_html = f"<pre>{escape(str(preview))}</pre>" if preview else "<p class='muted'>Aucun apercu.</p>"
+    return (
+        "<div class='profile-tabs'>"
+        f"<section class='profile-section'><h3>Contenu</h3>{_value(value.get('content', {}))}</section>"
+        f"<section class='profile-section'><h3>Apercu</h3>{preview_html}</section>"
+        f"<section class='profile-section'><h3>Risque</h3>{_value(value.get('risk', {}))}</section>"
+        f"<section class='profile-section'><h3>Limites</h3>{_value(value.get('limitations', []))}</section>"
+        "</div>"
+    )
+
+
 def _save_wireless_records(result: dict[str, Any], action: str) -> dict[str, int]:
     if action == "wifi":
         categories = {
@@ -897,6 +912,97 @@ def _save_public_exposure_record(result: dict[str, Any]) -> dict[str, int]:
         )
     )
     return {"artifacts": 1, "events": 1, "correlations": 0}
+
+
+def _save_tool_record(kind: str, title: str, result: dict[str, Any], risk: str = "info") -> dict[str, int]:
+    artifact = Artifact(
+        kind=kind,
+        source="tools",
+        title=title,
+        summary=str(result.get("summary") or title),
+        value=str(result.get("value") or result.get("content", {}).get("data", ""))[:240],
+        confidence="moyenne",
+        risk=risk,
+        tags=["tool", kind],
+        data=result,
+    )
+    save_record(artifact)
+    save_record(
+        TimelineEvent(
+            source="tools",
+            event_type=kind,
+            description=artifact.summary,
+            level=risk,
+            artifact_id=artifact.id,
+            link="/tools",
+        )
+    )
+    return {"artifacts": 1, "events": 1, "correlations": 0}
+
+
+def _url_risk(value: str) -> dict[str, str]:
+    if not value.startswith(("http://", "https://")):
+        return {"level": "info", "reason": "Contenu non URL ou URL non reconnue."}
+    parsed = urlparse(value)
+    if parsed.scheme == "http":
+        return {"level": "attention", "reason": "URL HTTP non chiffree."}
+    if parsed.hostname and parsed.hostname.endswith(".invalid"):
+        return {"level": "info", "reason": "Domaine de demonstration non routable."}
+    return {"level": "info", "reason": "URL HTTPS. Verifier le domaine avant ouverture."}
+
+
+def _qr_payload(data: dict[str, list[str]]) -> dict[str, Any]:
+    mode = _field(data, "qr_mode", "text")
+    if mode == "text":
+        content = _field(data, "qr_text")
+        preview = generate_qr_text(content)
+        kind = "texte"
+    elif mode == "url":
+        content = _field(data, "qr_text")
+        if not content.startswith(("http://", "https://")):
+            raise ValueError("Une URL QR doit commencer par http:// ou https://.")
+        preview = generate_qr_text(content)
+        kind = "url"
+    elif mode == "wifi":
+        ssid = _field(data, "qr_ssid")
+        security = _field(data, "qr_security", "WPA")
+        password = _field(data, "qr_password")
+        content = f"WIFI:T:{security.upper()};S:{ssid};P:{password};;"
+        preview = generate_qr_wifi(ssid, password, security)
+        kind = "wifi"
+    elif mode == "contact":
+        name = _field(data, "qr_name")
+        phone = _field(data, "qr_phone")
+        email = _field(data, "qr_email")
+        content = f"vCard: {name} {phone} {email}".strip()
+        preview = generate_qr_vcard(name, phone, email)
+        kind = "contact"
+    elif mode == "mission":
+        content = "recon-sc://mission?name=" + quote(_field(data, "qr_text", "mission"))
+        preview = generate_qr_text(content)
+        kind = "mission recon SC"
+    elif mode == "note":
+        content = "NOTE:" + _field(data, "qr_text")
+        preview = generate_qr_text(content)
+        kind = "note"
+    elif mode == "lab_payload":
+        content = "https://example.invalid/recon-sc/lab-payload"
+        preview = generate_qr_text(content)
+        kind = "payload pedagogique inoffensif"
+    else:
+        raise ValueError("Mode QR inconnu.")
+    return {
+        "mode": "qr_tool",
+        "summary": f"QR Code genere: {kind}",
+        "content": {"type": kind, "data": content},
+        "preview": preview,
+        "risk": _url_risk(content),
+        "limitations": [
+            "Le QR masque son contenu avant lecture : verifier le domaine avant ouverture.",
+            "Les payloads generes ici sont pedagogiques et inoffensifs.",
+            "Aucune donnee n'est envoyee vers Internet pour generer ce QR.",
+        ],
+    }
 
 
 def _field(data: dict[str, list[str]], name: str, default: str = "") -> str:
@@ -1480,6 +1586,8 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             body = _wireless_result(self.state.result)
         elif route == "/tools" and self.state.result.get("mode") == "log_or_demo":
             body = _packet_result(self.state.result)
+        elif route == "/tools" and self.state.result.get("mode") == "qr_tool":
+            body = _qr_result(self.state.result)
         elif route == "/exposure" and self.state.result.get("mode") == "public_exposure":
             body = _public_exposure_result(self.state.result)
         else:
@@ -2319,6 +2427,52 @@ placeholder="Texte, domaine ou chemin relatif, ex. lab_workspace/suspicious.log"
 Pour protéger l'appareil, le GUI analyse uniquement les fichiers présents dans
 le dossier de la toolbox. Les chemins absolus extérieurs sont refusés.</p>
 <a href="/lab">Préparer les artefacts du laboratoire</a></section>
+<section class="card full"><span class="eyebrow">QR Code</span>
+<h2>Generer ou lire un QR</h2><p class="muted">Texte, URL, Wi-Fi, contact, mission recon SC,
+note ou payload pedagogique inoffensif. Les URL sont signalees avant ouverture.</p>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="qr_generate">
+<label>Type<select name="qr_mode">
+<option value="text">Texte</option><option value="url">URL</option>
+<option value="wifi">Wi-Fi</option><option value="contact">Contact</option>
+<option value="mission">Mission recon SC</option><option value="note">Note</option>
+<option value="lab_payload">Payload pedagogique inoffensif</option></select></label>
+<label>Texte, URL, mission ou note<textarea name="qr_text" rows="3"
+placeholder="https://example.org ou note de mission"></textarea></label>
+<div class="recon-fields"><label>SSID Wi-Fi<input name="qr_ssid" placeholder="Lab-WiFi"></label>
+<label>Mot de passe Wi-Fi<input name="qr_password" placeholder="optionnel si nopass"></label>
+<label>Securite<select name="qr_security"><option value="WPA">WPA/WPA2</option>
+<option value="WEP">WEP</option><option value="nopass">nopass</option></select></label></div>
+<div class="recon-fields"><label>Nom contact<input name="qr_name" placeholder="Nom"></label>
+<label>Telephone<input name="qr_phone" placeholder="+33..."></label>
+<label>Email<input name="qr_email" placeholder="contact@example.org"></label></div>
+<label class="check"><input type="checkbox" name="keep" checked>Ajouter au rapport/timeline locale.</label>
+<button type="submit">GENERER</button></form>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="qr_read_file">
+<label>Lire depuis une image locale<input name="value" placeholder="lab_workspace/qr.png"></label>
+<button type="submit">LIRE IMAGE</button></form>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="qr_decode_wifi">
+<label>Decoder un contenu Wi-Fi<textarea name="value" rows="2"
+placeholder="WIFI:T:WPA;S:Classe;P:secret;;"></textarea></label>
+<button type="submit">DECODER WIFI</button></form></section>
+<section class="card full"><span class="eyebrow">Hash / Crypto pedagogique</span>
+<h2>Empreintes, encodage et chiffrement demo</h2><p class="muted">SHA-256, SHA-512,
+BLAKE2, MD5 pedagogique, detection de format probable, Base64 et XOR avec cle connue.</p>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="crypto_tool">
+<label>Operation<select name="crypto_mode">
+<option value="hash">Calculer un hash</option><option value="identify">Identifier un hash probable</option>
+<option value="b64encode">Base64 encode</option><option value="b64decode">Base64 decode</option>
+<option value="xor_encrypt">Chiffrer demo XOR</option><option value="xor_decrypt">Dechiffrer demo XOR</option></select></label>
+<label>Algorithme<select name="crypto_algorithm">
+<option value="sha256">SHA-256</option><option value="sha512">SHA-512</option>
+<option value="blake2b">BLAKE2b</option><option value="md5">MD5 pedagogique</option></select></label>
+<label>Texte, hash ou Base64<textarea name="value" rows="4"></textarea></label>
+<label>Cle connue pour XOR<input name="crypto_key" placeholder="cle de demonstration"></label>
+<label class="check"><input type="checkbox" name="keep">Conserver le resultat comme artefact.</label>
+<button type="submit">EXECUTER</button></form></section>
 <section class="card full"><span class="eyebrow">Mini Wireshark pedagogique</span>
 <h2>Packet Observer</h2><p class="muted">Collez quelques lignes de trafic ou laissez vide pour
 charger une demo. L'outil lit des logs fournis : il ne capture pas d'interface
@@ -2361,6 +2515,64 @@ placeholder="192.168.1.10 -> 140.82.121.4 TCP 51544 443 SYN github.com"></textar
                 result = {"encoded": base64_encode(value)}
             elif action == "b64decode":
                 result = {"decoded": base64_decode(value)}
+            elif action == "qr_generate":
+                result = _qr_payload(data)
+                if _checked(data, "keep"):
+                    risk = str(result.get("risk", {}).get("level", "info"))
+                    result["records"] = _save_tool_record("qr_code", "QR Code", result, risk)
+            elif action == "qr_read_file":
+                result = {
+                    "mode": "qr_tool",
+                    "summary": "QR Code lu depuis une image locale.",
+                    "content": read_qr_from_file(str(_workspace_path(value))),
+                    "preview": "",
+                    "risk": {"level": "info", "reason": "Lecture locale sans envoi Internet."},
+                    "limitations": ["La lecture depend des bibliotheques optionnelles pyzbar/zbar ou OpenCV."],
+                }
+            elif action == "qr_decode_wifi":
+                decoded = decode_qr_wifi(value)
+                result = {
+                    "mode": "qr_tool",
+                    "summary": "QR Wi-Fi decode.",
+                    "content": decoded,
+                    "preview": "",
+                    "risk": {"level": "attention", "reason": "Un QR Wi-Fi peut contenir un secret reseau."},
+                    "limitations": ["Ne partagez ce contenu qu'avec les personnes autorisees."],
+                }
+            elif action == "crypto_tool":
+                mode = _field(data, "crypto_mode", "hash")
+                algorithm = _field(data, "crypto_algorithm", "sha256")
+                key = _field(data, "crypto_key")
+                if mode == "hash":
+                    result = {
+                        "summary": f"Hash {algorithm} calcule.",
+                        "algorithm": algorithm,
+                        "digest": hash_generate(value, algorithm),
+                        "warning": "MD5 est conserve uniquement pour l'apprentissage et l'identification historique."
+                        if algorithm == "md5" else "",
+                    }
+                elif mode == "identify":
+                    result = {"summary": "Formats de hash probables.", "matches": identify_hash(value)}
+                elif mode == "b64encode":
+                    result = {"summary": "Base64 encode.", "encoded": base64_encode(value)}
+                elif mode == "b64decode":
+                    result = {"summary": "Base64 decode.", "decoded": base64_decode(value)}
+                elif mode == "xor_encrypt":
+                    result = {
+                        "summary": "Chiffrement demo XOR.",
+                        "encoded": xor_encrypt(value, key),
+                        "warning": "XOR illustre le concept mais ne protege pas de vraies donnees.",
+                    }
+                elif mode == "xor_decrypt":
+                    result = {
+                        "summary": "Dechiffrement demo XOR avec cle connue.",
+                        "decoded": xor_decrypt(value, key),
+                        "warning": "XOR est un lab pedagogique uniquement.",
+                    }
+                else:
+                    raise ValueError("Operation crypto inconnue.")
+                if _checked(data, "keep"):
+                    result["records"] = _save_tool_record("hash_crypto", "Hash / Crypto", result)
             elif action == "packet":
                 result = observe_packets(value)
                 if _checked(data, "keep"):
