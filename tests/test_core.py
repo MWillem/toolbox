@@ -36,6 +36,7 @@ from cybertoolbox.labs.cracking import (
 )
 from cybertoolbox.labs.payloads import analyze_payload_file, create_harmless_payload
 from cybertoolbox.labs.packet_observer import observe_packets
+from cybertoolbox.labs.public_exposure import inspect_public_exposure
 from cybertoolbox.labs.script_analysis import analyze_script
 from cybertoolbox.labs.wireless import (
     _normalize_bluetooth_items,
@@ -459,6 +460,19 @@ class LabTests(unittest.TestCase):
         self.assertIn("TCP SYN", summaries)
         self.assertIn("requete DNS", summaries)
         self.assertTrue(any("HTTPS" in item for item in result["limitations"]))
+
+    def test_public_exposure_lists_visible_directory_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "public.txt").write_text("demo", encoding="utf-8")
+            (root / "notes").mkdir()
+            result = inspect_public_exposure(str(root))
+        self.assertEqual(result["mode"], "public_exposure")
+        self.assertEqual(result["kind"], "path")
+        self.assertTrue(result["directory_listing"])
+        names = {item["name"] for item in result["resources"]}
+        self.assertEqual(names, {"notes", "public.txt"})
+        self.assertTrue(any("brute force" in item.lower() for item in result["limitations"]))
 
     def test_harmless_payload_can_be_analyzed(self):
         with tempfile.TemporaryDirectory() as directory:

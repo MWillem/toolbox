@@ -9,5 +9,6 @@ lab_payload/
 lab_workspace/
 missions/
 historique/
+donnees/
 .cybertoolbox.json
 .coverage

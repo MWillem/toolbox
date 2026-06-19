@@ -35,6 +35,7 @@ from .labs.network_info import dns_lookup, inspect_tls
 from .labs.passwords import analyze_password
 from .labs.payloads import analyze_payload_file
 from .labs.packet_observer import observe_packets
+from .labs.public_exposure import inspect_public_exposure
 from .labs.script_analysis import analyze_script
 from .labs.system_audit import audit_system
 from .labs.cracking import crack_wpa2_demo, derive_wpa2_pmk
@@ -779,6 +780,37 @@ def _packet_result(value: dict[str, Any]) -> str:
     )
 
 
+def _public_exposure_result(value: dict[str, Any]) -> str:
+    resources = value.get("resources", [])
+    resource_cards = []
+    if isinstance(resources, list):
+        for item in resources[:40]:
+            if not isinstance(item, dict):
+                continue
+            title = item.get("name") or item.get("url") or item.get("type") or "Ressource"
+            detail = item.get("url") or item.get("type") or item.get("size") or ""
+            resource_cards.append(
+                "<article class='record-card'>"
+                f"<span class='status-badge'>{escape(str(value.get('kind', 'public')))}</span>"
+                f"<strong>{escape(str(title))}</strong>"
+                f"<span class='muted'>{escape(str(detail))}</span>"
+                "</article>"
+            )
+    resource_html = "".join(resource_cards) or "<p class='muted'>Aucune ressource listee.</p>"
+    preview = escape(str(value.get("preview", "")))
+    preview_html = f"<pre>{preview}</pre>" if preview else "<p class='muted'>Aucun apercu texte.</p>"
+    return (
+        "<div class='profile-tabs'>"
+        f"<section class='profile-section'><h3>Constats</h3>{_value(value.get('findings', []))}</section>"
+        f"<section class='profile-section'><h3>Metadonnees</h3>{_value(value.get('metadata', {}))}</section>"
+        f"<section class='profile-section'><h3>Ressources publiques</h3><div class='record-grid'>{resource_html}</div></section>"
+        f"<section class='profile-section'><h3>Apercu</h3>{preview_html}</section>"
+        f"<section class='profile-section'><h3>Recommandations</h3>{_value(value.get('recommendations', []))}</section>"
+        f"<section class='profile-section'><h3>Limites</h3>{_value(value.get('limitations', []))}</section>"
+        "</div>"
+    )
+
+
 def _save_wireless_records(result: dict[str, Any], action: str) -> dict[str, int]:
     if action == "wifi":
         categories = {
@@ -834,6 +866,37 @@ def _save_packet_records(result: dict[str, Any]) -> dict[str, int]:
         )
         events += 1
     return {"artifacts": 1, "events": events, "correlations": 0}
+
+
+def _save_public_exposure_record(result: dict[str, Any]) -> dict[str, int]:
+    findings = result.get("findings", [])
+    resources = result.get("resources", [])
+    finding_count = len(findings) if isinstance(findings, list) else 0
+    resource_count = len(resources) if isinstance(resources, list) else 0
+    risk = "attention" if result.get("directory_listing") or resource_count else "info"
+    artifact = Artifact(
+        kind="public_exposure",
+        source="public_exposure_viewer",
+        title=str(result.get("target") or "Exposition publique"),
+        summary=f"{resource_count} ressource(s) publique(s), {finding_count} constat(s).",
+        value=str(result.get("target") or ""),
+        confidence="moyenne",
+        risk=risk,
+        tags=["public", "exposure", str(result.get("kind") or "resource")],
+        data=result,
+    )
+    save_record(artifact)
+    save_record(
+        TimelineEvent(
+            source="public_exposure_viewer",
+            event_type="public_exposure",
+            description=artifact.summary,
+            level=risk,
+            artifact_id=artifact.id,
+            link="/exposure",
+        )
+    )
+    return {"artifacts": 1, "events": 1, "correlations": 0}
 
 
 def _field(data: dict[str, list[str]], name: str, default: str = "") -> str:
@@ -1373,6 +1436,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/headers",
             "/lab",
             "/wireless",
+            "/exposure",
             "/context",
             "/tools",
             "/data",
@@ -1388,6 +1452,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/headers": lambda: self._run_headers(data),
             "/lab": self._prepare_lab,
             "/wireless": lambda: self._run_wireless(data),
+            "/exposure": lambda: self._run_exposure(data),
             "/context": lambda: self._run_context(data),
             "/tools": lambda: self._run_tools(data),
             "/data": lambda: self._run_data(data),
@@ -1415,6 +1480,8 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             body = _wireless_result(self.state.result)
         elif route == "/tools" and self.state.result.get("mode") == "log_or_demo":
             body = _packet_result(self.state.result)
+        elif route == "/exposure" and self.state.result.get("mode") == "public_exposure":
+            body = _public_exposure_result(self.state.result)
         else:
             body = _value(self.state.result)
         return f"<section class='card full'><h2>{escape(self.state.result_title)}</h2>{body}</section>"
@@ -2119,8 +2186,35 @@ Cette action efface toutes les données générées, mais pas le code du projet.
 <span class="eyebrow">Local exposure index</span><h2>Inventaire d'exposition local</h2>
 <div class="notice">Aucune recherche Internet : cette page indexe uniquement les
 scans privés explicitement autorisés et conservés localement.</div>
-{_value(inventory)}</section></div>"""
+{_value(inventory)}</section>
+<section class="card full"><span class="eyebrow">Lecture publique uniquement</span>
+<h2>Public Exposure Viewer</h2><p class="muted">Liste et previsualise uniquement une
+ressource deja accessible sans contournement : URL HTTP, dossier local ou partage
+fourni par l'utilisateur. Aucun brute force, fuzzing, crawling profond ou
+aspiration massive.</p>
+<form method="post" action="/exposure">{self._token()}
+<label>URL, dossier ou partage public<input name="target"
+placeholder="http://192.168.1.20/public/ ou \\\\serveur\\partage"></label>
+<label class="check"><input type="checkbox" name="authorized" required>Je confirme que cette ressource est publique ou autorisee.</label>
+<label class="check"><input type="checkbox" name="keep" checked>Ajouter aux donnees structurees et a la timeline.</label>
+<button type="submit">INSPECTER</button></form></section>
+{self._result("/exposure")}</div>"""
         self._send(render_layout("Exposition locale", body))
+
+    def _run_exposure(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            if not _checked(data, "authorized"):
+                raise ValueError("Autorisation requise pour inspecter cette ressource.")
+            result = inspect_public_exposure(_field(data, "target"))
+            if _checked(data, "keep"):
+                result["records"] = _save_public_exposure_record(result)
+            self.state.result_title = "Public Exposure Viewer"
+            self.state.result_route = "/exposure"
+            self.state.result = result
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/exposure")
 
     def _map(self) -> None:
         body = f"""<div class="grid"><section class="card full" data-tabs>
