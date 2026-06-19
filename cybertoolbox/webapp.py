@@ -244,6 +244,12 @@ box-shadow:0 0 12px var(--signal)}
 .widget-actions a,.widget-actions button{border-radius:999px;clip-path:none;padding:6px 9px;font-size:12px}
 .widget-actions button{background:var(--panel);color:var(--text);border-color:var(--line)}
 .widget-actions .layout-control{min-width:34px;padding:6px 8px}
+.layout-status{grid-column:1/-1;display:flex;justify-content:space-between;gap:12px;align-items:center;
+padding:10px 12px;border:1px dashed var(--line);border-radius:var(--radius);background:rgba(var(--panel-rgb),.42);
+color:var(--muted);font-size:12px}.layout-status button{border-radius:999px;clip-path:none;padding:6px 10px;
+background:var(--panel);color:var(--text);border-color:var(--line)}
+.dash-tile.moved{animation:tileMoved .9s ease}@keyframes tileMoved{0%{border-color:var(--accent);
+box-shadow:0 0 0 3px rgba(56,232,255,.24),0 0 28px var(--glow)}100%{}}
 .page-dots{grid-column:1/-1;display:flex;justify-content:center;gap:8px}.page-dots a{width:9px;height:9px;border-radius:50%;
 background:var(--muted);opacity:.55}.page-dots a:hover{background:var(--signal);opacity:1}
 table{width:100%;border-collapse:collapse;font-size:13px}
@@ -1582,6 +1588,13 @@ window.addEventListener("DOMContentLoaded",()=>{{
 const pages=document.querySelectorAll("[data-dashboard-page]");
 if(!pages.length)return;
 const sizes=["size-s","size-m","size-l","size-tall"];
+const status=document.getElementById("dashboard-layout-status");
+function widgetsIn(page){{return [...page.querySelectorAll(":scope > [data-widget-id]")];}}
+function widgetLabel(widget){{return widget.querySelector("span,strong")?.textContent?.trim()||widget.dataset.widgetId;}}
+function flash(widget,message){{
+if(status)status.textContent=message;
+widget.classList.remove("moved");void widget.offsetWidth;widget.classList.add("moved");
+}}
 try{{
 const saved=JSON.parse(localStorage.getItem("recon-dashboard-layout")||"{{}}");
 pages.forEach(page=>{{
@@ -1613,19 +1626,31 @@ const current=sizes.findIndex(size=>widget.classList.contains(size));
 widget.classList.remove(...sizes);
 widget.classList.add(sizes[(current+1)%sizes.length]);
 saveDashboardLayout();
+flash(widget,`${{widgetLabel(widget)}} : taille modifiee.`);
 }}));
 document.querySelectorAll("[data-layout-action]").forEach(button=>button.addEventListener("click",event=>{{
 event.preventDefault();
 const widget=button.closest("[data-widget-id]");
 const page=widget.closest("[data-dashboard-page]");
 const action=button.dataset.layoutAction;
-if(action==="left"){{const prev=widget.previousElementSibling;if(prev?.matches("[data-widget-id]"))prev.before(widget);}}
-if(action==="right"){{const next=widget.nextElementSibling;if(next?.matches("[data-widget-id]"))next.after(widget);}}
-if(action==="prev-page"){{const previous=page.previousElementSibling;if(previous?.matches("[data-dashboard-page]"))previous.appendChild(widget);}}
-if(action==="next-page"){{const nextPage=page.nextElementSibling;if(nextPage?.matches("[data-dashboard-page]"))nextPage.appendChild(widget);}}
+const pageList=[...pages];
+const list=widgetsIn(page);
+const index=list.indexOf(widget);
+let targetPage=page;
+if(action==="left"&&index>0){{page.insertBefore(widget,list[index-1]);}}
+if(action==="right"&&index<list.length-1){{page.insertBefore(list[index+1],widget);}}
+if(action==="prev-page"){{const previous=pageList[pageList.indexOf(page)-1];if(previous){{targetPage=previous;previous.appendChild(widget);}}}}
+if(action==="next-page"){{const nextPage=pageList[pageList.indexOf(page)+1];if(nextPage){{targetPage=nextPage;nextPage.appendChild(widget);}}}}
 saveDashboardLayout();
-widget.scrollIntoView({{behavior:"smooth",block:"nearest",inline:"center"}});
+targetPage.scrollIntoView({{behavior:"smooth",block:"nearest",inline:"center"}});
+flash(widget,`${{widgetLabel(widget)}} deplace.`);
 }}));
+document.querySelector("[data-dashboard-reset]")?.addEventListener("click",event=>{{
+event.preventDefault();
+localStorage.removeItem("recon-dashboard-layout");
+if(status)status.textContent="Agencement reinitialise. Recharge de la page...";
+setTimeout(()=>location.reload(),250);
+}});
 }});
 const loadingSteps={{
 discover:["Validation du réseau privé autorisé","Sélection de Nmap ou du moteur portable",
@@ -1859,7 +1884,10 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
             for name, text, href in kill_steps
         )
         settings_panel = _value(dict(settings_summary(settings)))
-        body = f"""<div class="grid"><section class="dashboard-pages" aria-label="Dashboard pagine">
+        body = f"""<div class="grid"><div class="layout-status"><span id="dashboard-layout-status">
+Agencement : utilisez Taille, fleches et P-/P+ pour modifier le dashboard.</span>
+<button type="button" data-dashboard-reset>Reinitialiser</button></div>
+<section class="dashboard-pages" aria-label="Dashboard pagine">
 <div class="dashboard-page" id="dash-page-1" data-dashboard-page="overview">
 <div class="dashboard-page-title"><span>Page 1 / Vue rapide</span><span>Taille, position, page</span></div>
 <article class="dash-tile size-s" data-widget-id="assets"><span>Appareils observes</span>

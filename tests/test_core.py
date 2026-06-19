@@ -140,6 +140,7 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("dashboard-pages", page)
         self.assertIn("data-size-cycle", page)
         self.assertIn("data-layout-action", page)
+        self.assertIn("data-dashboard-reset", page)
         self.assertIn('data-mode-track="app"', page)
         self.assertIn('data-mode-track="map"', page)
         self.assertIn("quick-toggle", page)
