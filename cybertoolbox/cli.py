@@ -1265,7 +1265,7 @@ def reconnaissance_menu() -> None:
     print_menu_item("4", "Profiler passivement un domaine public")
     print_menu_item("5", "Inventaire d'exposition local")
     print_menu_item("6", "Aide des ports connus")
-    print_menu_item("7", "Profiler enrichi façon Watch Dogs")
+    print_menu_item("7", "Profiler enrichi tactique")
     print_menu_item("0", "Retour")
     choice = input("Choix : ").strip()
     if choice == "1":
@@ -2134,9 +2134,9 @@ def bluetooth_menu() -> None:
 
 
 def watchdog_profiler_menu() -> None:
-    """Affiche les profils enrichis demandés pour le mode Watch Dogs."""
+    """Affiche les profils enrichis de la toolbox."""
     clear_screen()
-    print("\n=== WATCHDOGS // PROFILER ENRICHI ===")
+    print("\n=== PROFILER ENRICHI ===")
     print_menu_item("1", "Scanner un username public")
     print_menu_item("2", "Profiler mon environnement")
     print_menu_item("3", "Profiler un appareil réseau autorisé")

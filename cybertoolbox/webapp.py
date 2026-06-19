@@ -1976,9 +1976,9 @@ du système : aucune connexion, capture, désauthentification ou appairage.</p>
 {view_select}{consent}{keep}<button type="submit">LANCER</button></form></article>
 
 <article class="scanner-card"><div class="tool-head"><span class="quick-icon">PKT</span>
-<div><h3>Packet Observer</h3><p class="muted">Préparation d'une vue pédagogique type mini Wireshark.</p></div></div>
-<div class="meta-row"><span class="risk-badge">lecture</span><span class="status-badge">à venir</span></div>
-<p class="muted">La capture trafic sera limitée au lab/local autorisé et ne tentera jamais de déchiffrer HTTPS.</p>
+<div><h3>Packet Observer</h3><p class="muted">Lecture pedagogique de logs trafic type mini Wireshark.</p></div></div>
+<div class="meta-row"><span class="risk-badge">lecture</span><span class="status-badge">actif</span></div>
+<p class="muted">L'outil lit des lignes fournies ou une demo locale : aucune capture interface, aucun dechiffrement HTTPS.</p>
 <a class="button" href="/tools">VOIR OUTILS</a></article>
 </div></section>
 

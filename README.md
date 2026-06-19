@@ -551,7 +551,7 @@ La version 2.13 ajoute cinq modules pédagogiques accessibles depuis les menus :
   attaque par dictionnaire locale ;
 - **Bluetooth avancé** : découverte classique, BLE, fabricant OUI et profil
   technique d'un appareil ;
-- **Profiler Watch Dogs** : recherche HEAD limitée d'un username public, profil
+- **Profiler enrichi tactique** : recherche HEAD limitée d'un username public, profil
   de l'environnement et score pédagogique d'ombre numérique.
 
 Les fonctions NFC et Bluetooth avancées dépendent du matériel, des pilotes, des

@@ -130,7 +130,7 @@ def profile_current_environment() -> dict[str, Any]:
 
 
 def display_watchdogs_profile(profile: dict[str, Any]) -> None:
-    """Affiche un profil technique coloré inspiré d'une interface Watch Dogs."""
+    """Affiche un profil technique coloré dans un style tactique."""
     score_data = profile.get("digital_shadow") or calculate_digital_shadow_score(profile)
     score = score_data.get("score", 0)
     risk = str(score_data.get("risk_level", "low")).upper()
@@ -140,7 +140,7 @@ def display_watchdogs_profile(profile: dict[str, Any]) -> None:
     bluetooth = profile.get("bluetooth_visible", [])
     wifi_count = len(wifi.get("networks", [])) if isinstance(wifi, dict) else len(wifi)
     print("\033[95m╔══════════════════════════════════════════════╗\033[0m")
-    print("\033[95m║          WATCHDOGS // ASSET PROFILE          ║\033[0m")
+    print("\033[95m║          RECON SC // ASSET PROFILE           ║\033[0m")
     print("\033[95m╚══════════════════════════════════════════════╝\033[0m")
     print(f"🛡  SCORE D'OMBRE : {color}{score:03d}/100 [{risk}]{reset}")
     print(f"🌐 IP PUBLIQUE    : {profile.get('public_ip') or profile.get('address', '-')}")
