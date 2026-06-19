@@ -225,11 +225,6 @@ color:var(--text);box-shadow:0 14px 34px rgba(0,0,0,.24)}
 background:rgba(0,0,0,.46);backdrop-filter:blur(12px)}
 .dashboard-modal:target{display:grid}.dashboard-modal .result-panel{display:block}
 .icon-button{display:grid;place-items:center;width:42px;height:42px;padding:0;border-radius:50%;font-size:20px}
-.dashboard-toolbar{grid-column:1/-1;display:flex;justify-content:space-between;gap:12px;align-items:center;
-padding:10px 12px;border:1px dashed var(--line);border-radius:var(--radius);background:rgba(var(--panel-rgb),.42);
-color:var(--muted);font-size:12px}.dashboard-toolbar>div{display:flex;gap:8px;flex-wrap:wrap}
-.dashboard-toolbar button{border-radius:999px;clip-path:none;padding:6px 10px;background:var(--panel);color:var(--text);
-border-color:var(--line)}.dashboard-toolbar .edit-only{display:none}.dashboard-toolbar.is-editing .edit-only{display:inline-flex}
 .dashboard-board{grid-column:1/-1;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));
 grid-auto-rows:minmax(104px,auto);gap:12px;align-content:start;max-width:1180px;width:100%;justify-self:center}
 .dash-tile{position:relative;display:grid;gap:8px;min-height:104px;padding:14px;border:1px solid var(--line);
@@ -242,13 +237,8 @@ box-shadow:0 0 12px var(--signal)}
 .dash-tile strong{font-size:clamp(16px,2vw,24px);color:var(--accent);overflow-wrap:anywhere}
 .dash-tile span,.dash-tile small{color:var(--muted)}.dash-tile .app-grid{grid-template-columns:repeat(auto-fit,minmax(98px,1fr))}
 .dash-tile.size-s .tile-detail,.dash-tile.size-s .tile-extra,.dash-tile.size-s .app-grid{display:none}.dash-tile.size-s small{font-size:10px}
-.dash-tile.size-m .tile-extra{display:none}.dashboard-board:not(.is-editing) .layout-control,
-.dashboard-board:not(.is-editing) [data-size-cycle]{display:none}.widget-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:auto}
-.widget-actions a,.widget-actions button{border-radius:999px;clip-path:none;padding:6px 9px;font-size:12px}
-.widget-actions button{background:var(--panel);color:var(--text);border-color:var(--line)}
-.widget-actions .layout-control{min-width:34px;padding:6px 8px}
-.dash-tile.moved{animation:tileMoved .9s ease}@keyframes tileMoved{0%{border-color:var(--accent);
-box-shadow:0 0 0 3px rgba(56,232,255,.24),0 0 28px var(--glow)}100%{}}
+.dash-tile.size-m .tile-extra{display:none}.widget-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:auto}
+.widget-actions a{border-radius:999px;clip-path:none;padding:6px 9px;font-size:12px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;
 vertical-align:top}th{color:var(--signal)}.key-table>tbody>tr>th{width:28%;
@@ -420,7 +410,6 @@ grid-column:1/-1}.topline{display:block}.table-wrap{overflow-x:auto}
 .dashboard-board{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .dash-tile.size-s,.dash-tile.size-m{grid-column:span 2}
 .dash-tile.size-l,.dash-tile.size-xl,.dash-tile.size-tall{grid-column:1/-1}
-.dashboard-toolbar{align-items:flex-start}.dashboard-toolbar>div{justify-content:flex-start}
 .context-bar{position:sticky;top:0;z-index:4;font-size:12px;background:rgba(var(--panel-rgb),.96)}
 .geo-tools{grid-template-columns:1fr}.geo-tool-row{grid-template-columns:1fr}.geo-map{height:56vh}
 h1{font-size:26px}.card{padding:16px}}
@@ -1582,73 +1571,6 @@ map.addEventListener("touchend",()=>mapPinchDistance=0);
 document.getElementById("map-layer")?.addEventListener("change",redrawGeoMap);
 document.getElementById("map-zoom")?.addEventListener("change",redrawGeoMap);
 }});
-window.addEventListener("DOMContentLoaded",()=>{{
-const board=document.querySelector("[data-dashboard-board]");
-if(!board)return;
-const toolbar=document.querySelector("[data-dashboard-toolbar]");
-const sizes=["size-s","size-m","size-l","size-xl","size-tall"];
-const status=document.getElementById("dashboard-layout-status");
-function widgets(){{return [...board.querySelectorAll(":scope > [data-widget-id]")];}}
-function widgetLabel(widget){{return widget.querySelector("span,strong")?.textContent?.trim()||widget.dataset.widgetId;}}
-function flash(widget,message){{
-if(status)status.textContent=message;
-widget.classList.remove("moved");void widget.offsetWidth;widget.classList.add("moved");
-}}
-try{{
-const saved=JSON.parse(localStorage.getItem("recon-dashboard-layout")||"{{}}");
-const order=saved.order||[];
-order.map(id=>board.querySelector(`[data-widget-id="${{CSS.escape(id)}}"]`)).filter(Boolean)
-.forEach(widget=>board.appendChild(widget));
-Object.entries(saved.sizes||{{}}).forEach(([id,size])=>{{
-const widget=board.querySelector(`[data-widget-id="${{CSS.escape(id)}}"]`);
-if(widget&&sizes.includes(size)){{widget.classList.remove(...sizes);widget.classList.add(size);}}
-}});
-}}catch(error){{}}
-function saveDashboardLayout(){{
-const layout={{
-order:widgets().map(item=>item.dataset.widgetId),
-sizes:Object.fromEntries(widgets().map(item=>[
-item.dataset.widgetId,sizes.find(size=>item.classList.contains(size))||"size-m"
-]))
-}};
-localStorage.setItem("recon-dashboard-layout",JSON.stringify(layout));
-}}
-document.querySelector("[data-dashboard-edit]")?.addEventListener("click",event=>{{
-event.preventDefault();
-const editing=!board.classList.contains("is-editing");
-board.classList.toggle("is-editing",editing);
-toolbar?.classList.toggle("is-editing",editing);
-event.currentTarget.textContent=editing?"Terminer":"Personnaliser";
-if(status)status.textContent=editing?"Personnalisation active : utilisez Taille et les fleches.":"Dashboard verrouille : les controles sont masques.";
-}});
-document.querySelectorAll("[data-size-cycle]").forEach(button=>button.addEventListener("click",event=>{{
-event.preventDefault();
-const widget=button.closest("[data-widget-id]");
-const current=sizes.findIndex(size=>widget.classList.contains(size));
-widget.classList.remove(...sizes);
-widget.classList.add(sizes[(current+1)%sizes.length]);
-saveDashboardLayout();
-flash(widget,`${{widgetLabel(widget)}} : taille modifiee.`);
-}}));
-document.querySelectorAll("[data-layout-action]").forEach(button=>button.addEventListener("click",event=>{{
-event.preventDefault();
-const widget=button.closest("[data-widget-id]");
-const action=button.dataset.layoutAction;
-const list=widgets();
-const index=list.indexOf(widget);
-if(action==="left"&&index>0){{board.insertBefore(widget,list[index-1]);}}
-if(action==="right"&&index<list.length-1){{board.insertBefore(list[index+1],widget);}}
-saveDashboardLayout();
-widget.scrollIntoView({{behavior:"smooth",block:"nearest",inline:"nearest"}});
-flash(widget,`${{widgetLabel(widget)}} deplace.`);
-}}));
-document.querySelector("[data-dashboard-reset]")?.addEventListener("click",event=>{{
-event.preventDefault();
-localStorage.removeItem("recon-dashboard-layout");
-if(status)status.textContent="Agencement reinitialise. Recharge de la page...";
-setTimeout(()=>location.reload(),250);
-}});
-}});
 const loadingSteps={{
 discover:["Validation du réseau privé autorisé","Sélection de Nmap ou du moteur portable",
 "Envoi des sondes de découverte","Collecte des hôtes ayant répondu",
@@ -1881,54 +1803,33 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
             for name, text, href in kill_steps
         )
         settings_panel = _value(dict(settings_summary(settings)))
-        body = f"""<div class="grid"><div class="dashboard-toolbar" data-dashboard-toolbar><span id="dashboard-layout-status">
-Dashboard verrouille : les controles sont masques.</span><div>
-<button type="button" data-dashboard-edit>Personnaliser</button>
-<button class="edit-only" type="button" data-dashboard-reset>Reinitialiser</button></div></div>
-<section class="dashboard-board" data-dashboard-board aria-label="Dashboard personnalisable">
+        body = f"""<div class="grid">
+<section class="dashboard-board" data-dashboard-board aria-label="Dashboard">
 <article class="dash-tile size-s" data-widget-id="assets"><span>Appareils observes</span>
 <strong>{exposure['asset_count']:02d}</strong><small>{exposure['service_count']} services indexes</small>
-<div class="widget-actions"><a href="/devices">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+<div class="widget-actions"><a href="/devices">Ouvrir</a></div></article>
 <article class="dash-tile size-m" data-widget-id="records"><span>Donnees reutilisables</span>
-<div class="tile-detail">{record_metrics}</div><div class="widget-actions"><a href="/reports">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+<div class="tile-detail">{record_metrics}</div><div class="widget-actions"><a href="/reports">Ouvrir</a></div></article>
 <article class="dash-tile size-m" data-widget-id="timeline"><span>Timeline recente</span>
-<div class="tile-detail">{timeline}</div><div class="widget-actions"><a href="/reports#timeline">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+<div class="tile-detail">{timeline}</div><div class="widget-actions"><a href="/reports#timeline">Ouvrir</a></div></article>
 <article class="dash-tile size-s" data-widget-id="config"><span>Configuration active</span>
 <strong>{escape(settings.theme)}</strong><small>Mode {escape(settings.app_color_mode)} - carte {escape(settings.map_color_mode)}</small>
-<div class="widget-actions"><a href="#config-active">Details</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+<div class="widget-actions"><a href="#config-active">Details</a></div></article>
 <article class="dash-tile size-l kill-zone" data-widget-id="kill-chain"><span>Parcours defensif</span>
 <p class="muted tile-detail">Collecter, transformer en donnee reutilisable, correler, puis restituer.</p>
-<div class="app-grid tile-extra">{kill_cards}</div><div class="widget-actions"><a href="/kill-chain">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+<div class="app-grid tile-extra">{kill_cards}</div><div class="widget-actions"><a href="/kill-chain">Ouvrir</a></div></article>
 <article class="dash-tile size-m" data-widget-id="quick-full-scan"><span>Action rapide</span><strong>Scan complet</strong>
 <small>Preselection de toutes les sources de recon.</small>
-<div class="widget-actions"><a href="/scanner?source_discover=1&source_ports=1&source_wifi=1&source_bluetooth=1&source_http=1">Lancer</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+<div class="widget-actions"><a href="/scanner?source_discover=1&source_ports=1&source_wifi=1&source_bluetooth=1&source_http=1">Lancer</a></div></article>
 <article class="dash-tile size-m" data-widget-id="quick-scanner"><span>Scanner</span><strong>Choisir</strong>
 <small>Selectionner une ou plusieurs sources.</small>
-<div class="widget-actions"><a href="/scanner">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+<div class="widget-actions"><a href="/scanner">Ouvrir</a></div></article>
 <article class="dash-tile size-m" data-widget-id="quick-packet"><span>Packet Observer</span><strong>Logs</strong>
 <small>Lire des logs reseau pedagogiques.</small>
-<div class="widget-actions"><a href="/tools">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+<div class="widget-actions"><a href="/tools">Ouvrir</a></div></article>
 <article class="dash-tile size-m" data-widget-id="quick-reports"><span>Rapports</span><strong>{history_count}</strong>
 <small>{history_count} historiques / {len(list_reports())} rapports</small>
-<div class="widget-actions"><a href="/reports">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+<div class="widget-actions"><a href="/reports">Ouvrir</a></div></article>
 <article class="dash-tile size-l" data-widget-id="modules"><span>Modules</span><div class="app-grid tile-extra">
 <a class="app" href="/devices"><strong>Appareils</strong><span>Profil et confiance</span></a>
 <a class="app" href="/monitoring"><strong>Monitoring</strong><span>Sante locale et exposition</span></a>
@@ -1936,9 +1837,7 @@ Dashboard verrouille : les controles sont masques.</span><div>
 <a class="app" href="/tools"><strong>Outils</strong><span>Systeme, hash, DNS, TLS</span></a>
 <a class="app" href="/missions"><strong>Missions</strong><span>Scenarios pedagogiques</span></a>
 <a class="app" href="/reports"><strong>Rapports</strong><span>{history_count} historiques / {len(list_reports())} rapports</span></a>
-</div><div class="widget-actions"><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+</div></article>
 </section>
 <div class="dashboard-modal" id="config-active"><section class="result-panel">
 <header><div><span class="eyebrow">Dashboard</span><h2>Configuration active</h2></div>
