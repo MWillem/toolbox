@@ -213,6 +213,18 @@ backdrop-filter:blur(34px) saturate(150%);box-shadow:0 28px 90px rgba(0,0,0,.58)
 .result-panel header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}
 .result-panel h2{margin:0}.result-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
 .result-actions form{display:inline-flex}.result-actions button,.result-actions a{border-radius:999px;clip-path:none}
+.dashboard-strip{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.dashboard-widget{display:grid;gap:8px;min-height:118px;padding:16px;border:1px solid var(--line);
+border-radius:var(--radius);background:var(--panel);backdrop-filter:blur(24px) saturate(145%);
+color:var(--text);box-shadow:0 14px 34px rgba(0,0,0,.24)}
+.dashboard-widget:hover{border-color:var(--signal);box-shadow:0 0 24px var(--glow)}
+.dashboard-widget strong{font-size:24px;color:var(--accent)}.dashboard-widget span{color:var(--muted)}
+.dashboard-widget.compact strong{font-size:18px}.kill-zone{border-color:rgba(121,255,61,.42)}
+.kill-zone .app-grid{grid-template-columns:repeat(auto-fit,minmax(132px,1fr))}
+.dashboard-modal{position:fixed;inset:0;z-index:85;display:none;place-items:center;padding:18px;
+background:rgba(0,0,0,.46);backdrop-filter:blur(12px)}
+.dashboard-modal:target{display:grid}.dashboard-modal .result-panel{display:block}
+.icon-button{display:grid;place-items:center;width:42px;height:42px;padding:0;border-radius:50%;font-size:20px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;
 vertical-align:top}th{color:var(--signal)}.key-table>tbody>tr>th{width:28%;
@@ -482,7 +494,7 @@ def _recon_result(value: dict[str, Any]) -> str:
     records = value.get("records")
     if isinstance(records, dict):
         blocks.append(
-            "<section class='recon-category'><h3>DonnÃ©es crÃ©Ã©es</h3>"
+            "<section class='recon-category'><h3>Données créées</h3>"
             f"{_value(records)}</section>"
         )
     if suggestions:
@@ -1236,7 +1248,7 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
 data-map-mode="{map_mode}" style="--glass-alpha:{glass_alpha}">
 <div class="shell nav-collapsed" id="app-shell">
 <main><div class="page-actions"><a class="home-link" href="/" aria-label="Accueil">Accueil</a>
-<button class="back-button" type="button" onclick="history.back()" aria-label="Retour">Retour</button></div>
+<button class="back-button icon-button" type="button" onclick="history.back()" aria-label="Retour" title="Retour">&#8592;</button></div>
 <div class="topline"><div>
 <span class="eyebrow">recon SC // interface locale autorisée</span><h1>{escape(title)}</h1></div>
 <span class="muted">LOCAL // AUTHORIZED</span></div>
@@ -1759,30 +1771,61 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
         history_count = len(list_history())
         record_metrics = _records_metrics()
         timeline = _timeline_preview(4)
-        body = f"""<div class="grid"><section class="card wide">
-<span class="eyebrow">Observe. Profile. Correlate.</span><h2>recon SC</h2>
-<p>Console locale défensive pour observer un périmètre autorisé, profiler les
-appareils, corréler les preuves et préparer une restitution claire.</p>
-<a class="button" href="/scanner">OUVRIR LE SCANNER</a>
-</section><section class="card"><span class="eyebrow">Appareils observés</span>
-<div class="metric">{exposure['asset_count']:02d}</div><p>actifs indexés</p>
-<span class="badge">{exposure['service_count']} services</span></section>
+        kill_steps = [
+            ("Reconnaissance", "Observer Wi-Fi, Bluetooth, IP et HTTP.", "/scanner"),
+            ("Scan", "Identifier hotes actifs et ports TCP.", "/scanner"),
+            ("Enumeration", "Transformer une cible en fiche appareil.", "/devices"),
+            ("Analyse", "Lire DNS, TLS, journaux et fichiers.", "/tools"),
+            ("Hypotheses", "Proposer des axes defensifs.", "/reports"),
+            ("Correlation", "Relier actifs, preuves et historique.", "/reports"),
+            ("Recommandations", "Prioriser les actions possibles.", "/reports"),
+            ("Rapport", "Restituer les constats autorises.", "/reports"),
+        ]
+        kill_cards = "".join(
+            f'<a class="app" href="{href}"><strong>{escape(name)}</strong><span>{escape(text)}</span></a>'
+            for name, text, href in kill_steps
+        )
+        settings_panel = _value(dict(settings_summary(settings)))
+        body = f"""<div class="grid"><section class="dashboard-strip">
+<a class="dashboard-widget" href="/devices"><span>Appareils observes</span>
+<strong>{exposure['asset_count']:02d}</strong><small>{exposure['service_count']} services indexes</small></a>
+<a class="dashboard-widget" href="/reports"><span>Donnees reutilisables</span>
+{record_metrics}</a>
+<a class="dashboard-widget" href="/reports#timeline"><span>Timeline recente</span>
+{timeline}</a>
+<a class="dashboard-widget compact" href="#config-active"><span>Configuration active</span>
+<strong>{escape(settings.theme)}</strong><small>Mode {escape(settings.app_color_mode)} - carte {escape(settings.map_color_mode)}</small></a>
+</section>
+<section class="card full kill-zone"><div class="group-label">Kill Chain defensive</div>
+<p class="muted">Le parcours principal part de la collecte autorisee, transforme chaque resultat
+en donnee reutilisable, puis termine en correlation ou rapport.</p>
+<div class="app-grid">{kill_cards}</div></section>
+<section class="card full"><div class="group-label">Actions rapides</div>
+<div class="app-grid">
+<a class="app" href="/scanner?source_discover=1&source_ports=1&source_wifi=1&source_bluetooth=1&source_http=1">
+<strong>Scan complet</strong><span>Preselection de toutes les sources de recon</span></a>
+<a class="app" href="/scanner"><strong>Scanner</strong><span>Choisir une ou plusieurs sources</span></a>
+<a class="app" href="/tools"><strong>Packet Observer</strong><span>Lire des logs reseau pedagogiques</span></a>
+<a class="app" href="/reports"><strong>Rapports</strong><span>{history_count} historiques / {len(list_reports())} rapports</span></a>
+</div></section>
 <section class="card full"><div class="group-label">Modules</div>
 <div class="app-grid">
-<a class="app" href="/kill-chain"><strong>Kill Chain</strong><span>Parcours défensif guidé</span></a>
-<a class="app" href="/scanner"><strong>Scanner</strong><span>Recon locale autorisée</span></a>
+<a class="app" href="/kill-chain"><strong>Kill Chain</strong><span>Parcours defensif guide</span></a>
 <a class="app" href="/devices"><strong>Appareils</strong><span>Profil et confiance</span></a>
-<a class="app" href="/monitoring"><strong>Monitoring</strong><span>Santé locale et exposition</span></a>
-<a class="app" href="/map"><strong>Carte</strong><span>Carte et topologie réseau</span></a>
-<a class="app" href="/tools"><strong>Outils</strong><span>Système, hash, DNS, TLS</span></a>
-<a class="app" href="/missions"><strong>Missions</strong><span>Scénarios pédagogiques</span></a>
+<a class="app" href="/monitoring"><strong>Monitoring</strong><span>Sante locale et exposition</span></a>
+<a class="app" href="/map"><strong>Carte</strong><span>Carte et topologie reseau</span></a>
+<a class="app" href="/tools"><strong>Outils</strong><span>Systeme, hash, DNS, TLS</span></a>
+<a class="app" href="/missions"><strong>Missions</strong><span>Scenarios pedagogiques</span></a>
 <a class="app" href="/reports"><strong>Rapports</strong>
 <span>{history_count} historiques / {len(list_reports())} rapports</span></a>
-</div></section><section class="card full"><h2>DonnÃ©es rÃ©utilisables</h2>
-{record_metrics}</section><section class="card full"><h2>Timeline rÃ©cente</h2>
-{timeline}</section><section class="card full"><h2>Configuration active</h2>
-{_value(dict(settings_summary(settings)))}</section></div>"""
+</div></section>
+<div class="dashboard-modal" id="config-active"><section class="result-panel">
+<header><div><span class="eyebrow">Dashboard</span><h2>Configuration active</h2></div>
+<a class="button back-button icon-button" href="#" aria-label="Fermer" title="Fermer">&#215;</a></header>
+{settings_panel}<div class="result-actions"><a class="button" href="/settings">OUVRIR LES PARAMETRES</a></div>
+</section></div></div>"""
         self._send(render_layout("Accueil", body))
+        return
 
     def _accept(self, data: dict[str, list[str]]) -> None:
         if _checked(data, "accepted"):
@@ -2322,7 +2365,7 @@ data-confirm="Supprimer définitivement cet élément ?">{self._token()}
                 items.append(
                     f"""<li><strong>{escape(label)}</strong><div class="data-actions">
 <form class="compact" method="post" action="/data"
-data-confirm="Supprimer dÃ©finitivement cet Ã©lÃ©ment ?">{self._token()}
+data-confirm="Supprimer définitivement cet élément ?">{self._token()}
 <input type="hidden" name="scope" value="{scope}">
 <input type="hidden" name="name" value="{escape(path.name)}">
 <input type="hidden" name="operation" value="delete">
@@ -2355,7 +2398,7 @@ data-confirm="Supprimer tous les rapports, historiques et missions ? Cette actio
 <button class="tab-button" type="button" data-tab="history">Historiques</button>
 <button class="tab-button" type="button" data-tab="artifacts">Artefacts</button>
 <button class="tab-button" type="button" data-tab="timeline">Timeline</button>
-<button class="tab-button" type="button" data-tab="correlations">CorrÃ©lations</button>
+<button class="tab-button" type="button" data-tab="correlations">Corrélations</button>
 <button class="tab-button" type="button" data-tab="missions">Missions</button>
 <button class="tab-button" type="button" data-tab="cleanup">Nettoyage</button></div>
 <div class="tab-panel active" data-panel="reports">{report_tools}<ul class="clean">{report_items}</ul></div>

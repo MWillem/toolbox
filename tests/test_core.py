@@ -112,7 +112,7 @@ class SafetyTests(unittest.TestCase):
         self.assertIn('name="viewport"', page)
         self.assertIn('id="loading-overlay"', page)
         self.assertIn('class="home-link"', page)
-        self.assertIn('class="back-button"', page)
+        self.assertIn('back-button icon-button', page)
         self.assertNotIn('id="menu-toggle"', page)
         self.assertIn('data-theme="', page)
         self.assertIn('data-app-mode="', page)
