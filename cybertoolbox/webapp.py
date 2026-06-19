@@ -225,33 +225,30 @@ color:var(--text);box-shadow:0 14px 34px rgba(0,0,0,.24)}
 background:rgba(0,0,0,.46);backdrop-filter:blur(12px)}
 .dashboard-modal:target{display:grid}.dashboard-modal .result-panel{display:block}
 .icon-button{display:grid;place-items:center;width:42px;height:42px;padding:0;border-radius:50%;font-size:20px}
-.dashboard-pages{grid-column:1/-1;display:grid;grid-auto-flow:column;grid-auto-columns:min(100%,1180px);
-gap:18px;overflow-x:auto;scroll-snap-type:x mandatory;padding:0 calc((100% - min(100%,1180px))/2) 10px;scrollbar-width:thin}
-.dashboard-page{scroll-snap-align:start;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
-grid-auto-rows:minmax(104px,auto);gap:12px;align-content:start;min-height:420px}
-.dashboard-page-title{grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;
-gap:12px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.12em}
+.dashboard-toolbar{grid-column:1/-1;display:flex;justify-content:space-between;gap:12px;align-items:center;
+padding:10px 12px;border:1px dashed var(--line);border-radius:var(--radius);background:rgba(var(--panel-rgb),.42);
+color:var(--muted);font-size:12px}.dashboard-toolbar>div{display:flex;gap:8px;flex-wrap:wrap}
+.dashboard-toolbar button{border-radius:999px;clip-path:none;padding:6px 10px;background:var(--panel);color:var(--text);
+border-color:var(--line)}.dashboard-toolbar .edit-only{display:none}.dashboard-toolbar.is-editing .edit-only{display:inline-flex}
+.dashboard-board{grid-column:1/-1;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));
+grid-auto-rows:minmax(104px,auto);gap:12px;align-content:start;max-width:1180px;width:100%;justify-self:center}
 .dash-tile{position:relative;display:grid;gap:8px;min-height:104px;padding:14px;border:1px solid var(--line);
 border-radius:var(--radius);background:var(--panel);backdrop-filter:blur(24px) saturate(145%);
 color:var(--text);box-shadow:0 14px 34px rgba(0,0,0,.24);overflow:hidden}
 .dash-tile:before{content:"";position:absolute;right:0;top:0;width:60px;height:1px;background:var(--signal);
 box-shadow:0 0 12px var(--signal)}
-.dash-tile.size-s{grid-column:span 1}.dash-tile.size-m{grid-column:span 2}.dash-tile.size-l{grid-column:span 4}
-.dash-tile.size-tall{grid-column:span 2;grid-row:span 2}.dash-tile strong{font-size:clamp(16px,2vw,24px);color:var(--accent)}
+.dash-tile.size-s{grid-column:span 1}.dash-tile.size-m{grid-column:span 2}.dash-tile.size-l{grid-column:span 3}
+.dash-tile.size-xl{grid-column:1/-1}.dash-tile.size-tall{grid-column:span 3;grid-row:span 2}
+.dash-tile strong{font-size:clamp(16px,2vw,24px);color:var(--accent);overflow-wrap:anywhere}
 .dash-tile span,.dash-tile small{color:var(--muted)}.dash-tile .app-grid{grid-template-columns:repeat(auto-fit,minmax(98px,1fr))}
-.dash-tile.size-s .tile-detail,.dash-tile.size-s .app-grid{display:none}.dash-tile.size-s small{font-size:10px}
-.dash-tile.size-m .tile-extra{display:none}.widget-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:auto}
+.dash-tile.size-s .tile-detail,.dash-tile.size-s .tile-extra,.dash-tile.size-s .app-grid{display:none}.dash-tile.size-s small{font-size:10px}
+.dash-tile.size-m .tile-extra{display:none}.dashboard-board:not(.is-editing) .layout-control,
+.dashboard-board:not(.is-editing) [data-size-cycle]{display:none}.widget-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:auto}
 .widget-actions a,.widget-actions button{border-radius:999px;clip-path:none;padding:6px 9px;font-size:12px}
 .widget-actions button{background:var(--panel);color:var(--text);border-color:var(--line)}
 .widget-actions .layout-control{min-width:34px;padding:6px 8px}
-.layout-status{grid-column:1/-1;display:flex;justify-content:space-between;gap:12px;align-items:center;
-padding:10px 12px;border:1px dashed var(--line);border-radius:var(--radius);background:rgba(var(--panel-rgb),.42);
-color:var(--muted);font-size:12px}.layout-status button{border-radius:999px;clip-path:none;padding:6px 10px;
-background:var(--panel);color:var(--text);border-color:var(--line)}
 .dash-tile.moved{animation:tileMoved .9s ease}@keyframes tileMoved{0%{border-color:var(--accent);
 box-shadow:0 0 0 3px rgba(56,232,255,.24),0 0 28px var(--glow)}100%{}}
-.page-dots{grid-column:1/-1;display:flex;justify-content:center;gap:8px}.page-dots a{width:9px;height:9px;border-radius:50%;
-background:var(--muted);opacity:.55}.page-dots a:hover{background:var(--signal);opacity:1}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;
 vertical-align:top}th{color:var(--signal)}.key-table>tbody>tr>th{width:28%;
@@ -420,9 +417,10 @@ grid-column:1/-1}.topline{display:block}.table-wrap{overflow-x:auto}
 .sidebar{padding:14px}.brand{margin-bottom:14px}.app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .app{min-height:118px;padding:8px}.app:before,.quick-icon{width:56px;height:56px;font-size:12px}
 .quick-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.quick-toggle{padding:8px}
-.dashboard-page{grid-template-columns:repeat(2,minmax(0,1fr));min-height:calc(100vh - 190px)}
-.dash-tile.size-s,.dash-tile.size-m,.dash-tile.size-tall{grid-column:span 1}.dash-tile.size-l{grid-column:1/-1}
-.dashboard-pages{gap:12px}.dashboard-page-title{font-size:10px}
+.dashboard-board{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.dash-tile.size-s,.dash-tile.size-m{grid-column:span 2}
+.dash-tile.size-l,.dash-tile.size-xl,.dash-tile.size-tall{grid-column:1/-1}
+.dashboard-toolbar{align-items:flex-start}.dashboard-toolbar>div{justify-content:flex-start}
 .context-bar{position:sticky;top:0;z-index:4;font-size:12px;background:rgba(var(--panel-rgb),.96)}
 .geo-tools{grid-template-columns:1fr}.geo-tool-row{grid-template-columns:1fr}.geo-map{height:56vh}
 h1{font-size:26px}.card{padding:16px}}
@@ -1585,11 +1583,12 @@ document.getElementById("map-layer")?.addEventListener("change",redrawGeoMap);
 document.getElementById("map-zoom")?.addEventListener("change",redrawGeoMap);
 }});
 window.addEventListener("DOMContentLoaded",()=>{{
-const pages=document.querySelectorAll("[data-dashboard-page]");
-if(!pages.length)return;
-const sizes=["size-s","size-m","size-l","size-tall"];
+const board=document.querySelector("[data-dashboard-board]");
+if(!board)return;
+const toolbar=document.querySelector("[data-dashboard-toolbar]");
+const sizes=["size-s","size-m","size-l","size-xl","size-tall"];
 const status=document.getElementById("dashboard-layout-status");
-function widgetsIn(page){{return [...page.querySelectorAll(":scope > [data-widget-id]")];}}
+function widgets(){{return [...board.querySelectorAll(":scope > [data-widget-id]")];}}
 function widgetLabel(widget){{return widget.querySelector("span,strong")?.textContent?.trim()||widget.dataset.widgetId;}}
 function flash(widget,message){{
 if(status)status.textContent=message;
@@ -1597,28 +1596,31 @@ widget.classList.remove("moved");void widget.offsetWidth;widget.classList.add("m
 }}
 try{{
 const saved=JSON.parse(localStorage.getItem("recon-dashboard-layout")||"{{}}");
-pages.forEach(page=>{{
-const order=saved[page.dataset.dashboardPage]?.order||[];
-order.map(id=>page.querySelector(`[data-widget-id="${{CSS.escape(id)}}"]`)).filter(Boolean)
-.forEach(widget=>page.appendChild(widget));
-Object.entries(saved[page.dataset.dashboardPage]?.sizes||{{}}).forEach(([id,size])=>{{
-const widget=page.querySelector(`[data-widget-id="${{CSS.escape(id)}}"]`);
+const order=saved.order||[];
+order.map(id=>board.querySelector(`[data-widget-id="${{CSS.escape(id)}}"]`)).filter(Boolean)
+.forEach(widget=>board.appendChild(widget));
+Object.entries(saved.sizes||{{}}).forEach(([id,size])=>{{
+const widget=board.querySelector(`[data-widget-id="${{CSS.escape(id)}}"]`);
 if(widget&&sizes.includes(size)){{widget.classList.remove(...sizes);widget.classList.add(size);}}
-}});
 }});
 }}catch(error){{}}
 function saveDashboardLayout(){{
-const layout={{}};
-pages.forEach(page=>{{
-layout[page.dataset.dashboardPage]={{
-order:[...page.querySelectorAll("[data-widget-id]")].map(item=>item.dataset.widgetId),
-sizes:Object.fromEntries([...page.querySelectorAll("[data-widget-id]")].map(item=>[
+const layout={{
+order:widgets().map(item=>item.dataset.widgetId),
+sizes:Object.fromEntries(widgets().map(item=>[
 item.dataset.widgetId,sizes.find(size=>item.classList.contains(size))||"size-m"
 ]))
 }};
-}});
 localStorage.setItem("recon-dashboard-layout",JSON.stringify(layout));
 }}
+document.querySelector("[data-dashboard-edit]")?.addEventListener("click",event=>{{
+event.preventDefault();
+const editing=!board.classList.contains("is-editing");
+board.classList.toggle("is-editing",editing);
+toolbar?.classList.toggle("is-editing",editing);
+event.currentTarget.textContent=editing?"Terminer":"Personnaliser";
+if(status)status.textContent=editing?"Personnalisation active : utilisez Taille et les fleches.":"Dashboard verrouille : les controles sont masques.";
+}});
 document.querySelectorAll("[data-size-cycle]").forEach(button=>button.addEventListener("click",event=>{{
 event.preventDefault();
 const widget=button.closest("[data-widget-id]");
@@ -1631,18 +1633,13 @@ flash(widget,`${{widgetLabel(widget)}} : taille modifiee.`);
 document.querySelectorAll("[data-layout-action]").forEach(button=>button.addEventListener("click",event=>{{
 event.preventDefault();
 const widget=button.closest("[data-widget-id]");
-const page=widget.closest("[data-dashboard-page]");
 const action=button.dataset.layoutAction;
-const pageList=[...pages];
-const list=widgetsIn(page);
+const list=widgets();
 const index=list.indexOf(widget);
-let targetPage=page;
-if(action==="left"&&index>0){{page.insertBefore(widget,list[index-1]);}}
-if(action==="right"&&index<list.length-1){{page.insertBefore(list[index+1],widget);}}
-if(action==="prev-page"){{const previous=pageList[pageList.indexOf(page)-1];if(previous){{targetPage=previous;previous.appendChild(widget);}}}}
-if(action==="next-page"){{const nextPage=pageList[pageList.indexOf(page)+1];if(nextPage){{targetPage=nextPage;nextPage.appendChild(widget);}}}}
+if(action==="left"&&index>0){{board.insertBefore(widget,list[index-1]);}}
+if(action==="right"&&index<list.length-1){{board.insertBefore(list[index+1],widget);}}
 saveDashboardLayout();
-targetPage.scrollIntoView({{behavior:"smooth",block:"nearest",inline:"center"}});
+widget.scrollIntoView({{behavior:"smooth",block:"nearest",inline:"nearest"}});
 flash(widget,`${{widgetLabel(widget)}} deplace.`);
 }}));
 document.querySelector("[data-dashboard-reset]")?.addEventListener("click",event=>{{
@@ -1884,64 +1881,55 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
             for name, text, href in kill_steps
         )
         settings_panel = _value(dict(settings_summary(settings)))
-        body = f"""<div class="grid"><div class="layout-status"><span id="dashboard-layout-status">
-Agencement : utilisez Taille, fleches et P-/P+ pour modifier le dashboard.</span>
-<button type="button" data-dashboard-reset>Reinitialiser</button></div>
-<section class="dashboard-pages" aria-label="Dashboard pagine">
-<div class="dashboard-page" id="dash-page-1" data-dashboard-page="overview">
-<div class="dashboard-page-title"><span>Page 1 / Vue rapide</span><span>Taille, position, page</span></div>
+        body = f"""<div class="grid"><div class="dashboard-toolbar" data-dashboard-toolbar><span id="dashboard-layout-status">
+Dashboard verrouille : les controles sont masques.</span><div>
+<button type="button" data-dashboard-edit>Personnaliser</button>
+<button class="edit-only" type="button" data-dashboard-reset>Reinitialiser</button></div></div>
+<section class="dashboard-board" data-dashboard-board aria-label="Dashboard personnalisable">
 <article class="dash-tile size-s" data-widget-id="assets"><span>Appareils observes</span>
 <strong>{exposure['asset_count']:02d}</strong><small>{exposure['service_count']} services indexes</small>
 <div class="widget-actions"><a href="/devices">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
 <button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button>
-<button class="layout-control" type="button" data-layout-action="next-page">P+</button></div></article>
+<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
 <article class="dash-tile size-m" data-widget-id="records"><span>Donnees reutilisables</span>
 <div class="tile-detail">{record_metrics}</div><div class="widget-actions"><a href="/reports">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
 <button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button>
-<button class="layout-control" type="button" data-layout-action="next-page">P+</button></div></article>
+<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
 <article class="dash-tile size-m" data-widget-id="timeline"><span>Timeline recente</span>
 <div class="tile-detail">{timeline}</div><div class="widget-actions"><a href="/reports#timeline">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
 <button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button>
-<button class="layout-control" type="button" data-layout-action="next-page">P+</button></div></article>
+<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
 <article class="dash-tile size-s" data-widget-id="config"><span>Configuration active</span>
 <strong>{escape(settings.theme)}</strong><small>Mode {escape(settings.app_color_mode)} - carte {escape(settings.map_color_mode)}</small>
 <div class="widget-actions"><a href="#config-active">Details</a><button type="button" data-size-cycle>Taille</button>
 <button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button>
-<button class="layout-control" type="button" data-layout-action="next-page">P+</button></div></article>
+<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
 <article class="dash-tile size-l kill-zone" data-widget-id="kill-chain"><span>Parcours defensif</span>
 <p class="muted tile-detail">Collecter, transformer en donnee reutilisable, correler, puis restituer.</p>
 <div class="app-grid tile-extra">{kill_cards}</div><div class="widget-actions"><a href="/kill-chain">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
 <button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
-<button class="layout-control" type="button" data-layout-action="right">&#8594;</button>
-<button class="layout-control" type="button" data-layout-action="next-page">P+</button></div></article>
-</div>
-<div class="dashboard-page" id="dash-page-2" data-dashboard-page="actions">
-<div class="dashboard-page-title"><span>Page 2 / Actions rapides</span><span>Widgets de lancement</span></div>
+<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
 <article class="dash-tile size-m" data-widget-id="quick-full-scan"><span>Action rapide</span><strong>Scan complet</strong>
 <small>Preselection de toutes les sources de recon.</small>
 <div class="widget-actions"><a href="/scanner?source_discover=1&source_ports=1&source_wifi=1&source_bluetooth=1&source_http=1">Lancer</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="prev-page">P-</button><button class="layout-control" type="button" data-layout-action="left">&#8592;</button><button class="layout-control" type="button" data-layout-action="right">&#8594;</button><button class="layout-control" type="button" data-layout-action="next-page">P+</button></div></article>
+<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
+<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
 <article class="dash-tile size-m" data-widget-id="quick-scanner"><span>Scanner</span><strong>Choisir</strong>
 <small>Selectionner une ou plusieurs sources.</small>
 <div class="widget-actions"><a href="/scanner">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="prev-page">P-</button><button class="layout-control" type="button" data-layout-action="left">&#8592;</button><button class="layout-control" type="button" data-layout-action="right">&#8594;</button><button class="layout-control" type="button" data-layout-action="next-page">P+</button></div></article>
+<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
+<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
 <article class="dash-tile size-m" data-widget-id="quick-packet"><span>Packet Observer</span><strong>Logs</strong>
 <small>Lire des logs reseau pedagogiques.</small>
 <div class="widget-actions"><a href="/tools">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="prev-page">P-</button><button class="layout-control" type="button" data-layout-action="left">&#8592;</button><button class="layout-control" type="button" data-layout-action="right">&#8594;</button><button class="layout-control" type="button" data-layout-action="next-page">P+</button></div></article>
+<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
+<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
 <article class="dash-tile size-m" data-widget-id="quick-reports"><span>Rapports</span><strong>{history_count}</strong>
 <small>{history_count} historiques / {len(list_reports())} rapports</small>
 <div class="widget-actions"><a href="/reports">Ouvrir</a><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="prev-page">P-</button><button class="layout-control" type="button" data-layout-action="left">&#8592;</button><button class="layout-control" type="button" data-layout-action="right">&#8594;</button><button class="layout-control" type="button" data-layout-action="next-page">P+</button></div></article>
-</div>
-<div class="dashboard-page" id="dash-page-3" data-dashboard-page="modules">
-<div class="dashboard-page-title"><span>Page 3 / Modules</span><span>Acces type grille d'apps</span></div>
-<article class="dash-tile size-l" data-widget-id="modules"><span>Modules</span><div class="app-grid">
-<a class="app" href="/kill-chain"><strong>Kill Chain</strong><span>Parcours defensif guide</span></a>
+<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
+<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+<article class="dash-tile size-l" data-widget-id="modules"><span>Modules</span><div class="app-grid tile-extra">
 <a class="app" href="/devices"><strong>Appareils</strong><span>Profil et confiance</span></a>
 <a class="app" href="/monitoring"><strong>Monitoring</strong><span>Sante locale et exposition</span></a>
 <a class="app" href="/map"><strong>Carte</strong><span>Carte et topologie reseau</span></a>
@@ -1949,9 +1937,9 @@ Agencement : utilisez Taille, fleches et P-/P+ pour modifier le dashboard.</span
 <a class="app" href="/missions"><strong>Missions</strong><span>Scenarios pedagogiques</span></a>
 <a class="app" href="/reports"><strong>Rapports</strong><span>{history_count} historiques / {len(list_reports())} rapports</span></a>
 </div><div class="widget-actions"><button type="button" data-size-cycle>Taille</button>
-<button class="layout-control" type="button" data-layout-action="prev-page">P-</button><button class="layout-control" type="button" data-layout-action="left">&#8592;</button><button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
-</div>
-</section><nav class="page-dots" aria-label="Pages dashboard"><a href="#dash-page-1"></a><a href="#dash-page-2"></a><a href="#dash-page-3"></a></nav>
+<button class="layout-control" type="button" data-layout-action="left">&#8592;</button>
+<button class="layout-control" type="button" data-layout-action="right">&#8594;</button></div></article>
+</section>
 <div class="dashboard-modal" id="config-active"><section class="result-panel">
 <header><div><span class="eyebrow">Dashboard</span><h2>Configuration active</h2></div>
 <a class="button back-button icon-button" href="#" aria-label="Fermer" title="Fermer">&#215;</a></header>
