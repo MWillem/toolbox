@@ -151,7 +151,7 @@ border-color:var(--signal);background:rgba(121,255,61,.08)}main{min-width:0;
 padding:72px clamp(18px,4vw,54px) 60px;transition:padding-left .25s ease}.shell:not(.nav-collapsed) main{
 padding-left:calc(286px + clamp(18px,4vw,54px))}.topline{display:flex;justify-content:
 space-between;gap:16px;align-items:baseline;border-bottom:1px solid var(--line);
-margin-bottom:28px;padding-left:58px;min-height:44px}h1{margin:0 0 12px;font-size:clamp(24px,4vw,42px);
+margin-bottom:28px;padding-left:0;min-height:44px}h1{margin:0 0 12px;font-size:clamp(24px,4vw,42px);
 letter-spacing:-.04em}h1:before{content:"// ";color:var(--signal)}h2{color:
 var(--signal);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
 .eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:11px}.grid{display:
@@ -200,6 +200,19 @@ input[type=checkbox]{width:auto;accent-color:var(--signal)}.check{display:flex;
 align-items:flex-start;gap:9px}.notice{padding:13px 15px;border-left:3px solid
 var(--signal);background:var(--panel);backdrop-filter:blur(18px) saturate(130%);margin-bottom:16px}.error{border-color:
 var(--danger);color:#ffdce1}.table-wrap{width:100%;overflow-x:auto}
+.page-actions{position:sticky;top:0;z-index:30;display:flex;gap:10px;align-items:center;
+margin:-52px 0 18px;padding:10px 0;background:linear-gradient(to bottom,var(--bg),transparent)}
+.page-actions a,.page-actions button{min-width:44px;min-height:40px;padding:8px 12px;border-radius:999px;
+clip-path:none}.page-actions .home-link{background:var(--signal);color:#03100a}.page-actions .back-button{
+background:var(--panel);color:var(--text);border-color:var(--line)}
+.result-modal{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:18px;
+background:rgba(0,0,0,.48);backdrop-filter:blur(12px)}
+.result-panel{width:min(1120px,100%);max-height:88vh;overflow:auto;border:1px solid var(--line);
+border-radius:16px;background:rgba(var(--panel-rgb),calc(var(--glass-alpha) + .18));
+backdrop-filter:blur(34px) saturate(150%);box-shadow:0 28px 90px rgba(0,0,0,.58);padding:18px}
+.result-panel header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}
+.result-panel h2{margin:0}.result-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.result-actions form{display:inline-flex}.result-actions button,.result-actions a{border-radius:999px;clip-path:none}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;
 vertical-align:top}th{color:var(--signal)}.key-table>tbody>tr>th{width:28%;
@@ -346,7 +359,7 @@ background:var(--signal);box-shadow:0 0 0 8px var(--glow),0 0 22px #000}
 color:var(--muted);font-size:11px}
 @media(max-width:900px){body{--glass-alpha:.92}.shell{grid-template-columns:1fr}
 .shell:not(.nav-collapsed) main{padding-left:18px;filter:blur(1px);pointer-events:none}
-.topline{padding-left:58px}.sidebar{position:fixed;
+.topline{padding-left:0}.sidebar{position:fixed;
 left:14px;top:14px;width:min(84vw,320px);height:calc(100vh - 28px);box-shadow:20px 0 60px rgba(0,0,0,.45);
 background:rgba(var(--panel-rgb),.96);backdrop-filter:blur(18px) saturate(130%)}
 .shell.nav-collapsed{grid-template-columns:1fr}.shell:not(.nav-collapsed) .menu-toggle{left:min(calc(84vw + 22px),342px);
@@ -363,7 +376,7 @@ body[data-app-mode="light"] .quick-toggle span,body[data-app-mode="light"] .app 
 body[data-app-mode="light"] .quick-toggle strong,body[data-app-mode="light"] .app strong{color:#0f172a}
 .brand{margin-bottom:14px}
 nav{display:grid}.card,.card.wide{grid-column:span 6}}
-@media(max-width:600px){main{padding:76px 12px 40px}.topline{padding-left:54px;gap:10px}.card,.card.wide,.card.full{
+@media(max-width:600px){main{padding:76px 12px 40px}.topline{padding-left:0;gap:10px}.card,.card.wide,.card.full{
 grid-column:1/-1}.topline{display:block}.table-wrap{overflow-x:auto}
 .sidebar{padding:14px}.brand{margin-bottom:14px}.app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .app{min-height:118px;padding:8px}.app:before,.quick-icon{width:56px;height:56px;font-size:12px}
@@ -1210,11 +1223,6 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
             f'<body><main class="hero">{body}</main></body></html>'
         )
     settings = load_settings()
-    nav = """<nav><a href="/">Accueil</a><a href="/kill-chain">Kill Chain</a>
-<a href="/scanner">Scanner</a><a href="/devices">Appareils</a>
-<a href="/monitoring">Monitoring</a><a href="/map">Carte</a>
-<a href="/tools">Outils</a><a href="/missions">Missions</a>
-<a href="/reports">Rapports</a><a href="/settings">Paramètres</a></nav>"""
     context = local_context()
     body_class = "" if settings.glass_effect else "no-glass"
     glass_alpha = f"{settings.glass_opacity:.2f}"
@@ -1227,10 +1235,9 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
 <body class="{body_class}" data-theme="{escape(settings.theme)}" data-app-mode="{app_mode}"
 data-map-mode="{map_mode}" style="--glass-alpha:{glass_alpha}">
 <div class="shell nav-collapsed" id="app-shell">
-<aside class="sidebar"><div class="brand"><div class="sc-wordmark"><span>SC</span><span class="sc-mark"></span></div>
-<strong>recon SC</strong><small>Observe. Profile. Correlate.</small><div class="status"><span class="pulse"></span>
-SESSION LOCALE ACTIVE</div></div>{nav}</aside><main><div class="topline"><div>
-<button class="menu-toggle" id="menu-toggle" type="button" aria-label="Afficher ou masquer le menu">☰</button>
+<main><div class="page-actions"><a class="home-link" href="/" aria-label="Accueil">Accueil</a>
+<button class="back-button" type="button" onclick="history.back()" aria-label="Retour">Retour</button></div>
+<div class="topline"><div>
 <span class="eyebrow">recon SC // interface locale autorisée</span><h1>{escape(title)}</h1></div>
 <span class="muted">LOCAL // AUTHORIZED</span></div>
 <div class="context-bar"><span id="live-clock">{escape(context['time'])}</span>
@@ -1249,10 +1256,6 @@ function locate(){{if(!navigator.geolocation)return;navigator.geolocation.getCur
 document.querySelector('[name=latitude]').value=p.coords.latitude.toFixed(5);
 document.querySelector('[name=longitude]').value=p.coords.longitude.toFixed(5);}});}}
 const shell=document.getElementById("app-shell");
-const menuToggle=document.getElementById("menu-toggle");
-menuToggle.addEventListener("click",()=>{{
-shell.classList.toggle("nav-collapsed");
-}});
 const params=new URLSearchParams(window.location.search);
 if([...params.keys()].some(key=>key.startsWith("source_"))){{
 document.querySelectorAll('[name^="source_"]').forEach(item=>item.checked=false);
@@ -1294,9 +1297,6 @@ document.querySelectorAll(".app").forEach(item=>{{
 const label=item.querySelector("strong")?.textContent?.trim().toLowerCase()||"";
 item.dataset.icon=appIcons[label]||label.slice(0,3).toUpperCase()||"GO";
 }});
-document.querySelectorAll(".sidebar a").forEach(link=>link.addEventListener("click",()=>{{
-if(window.innerWidth<900)shell.classList.add("nav-collapsed");
-}}));
 document.querySelectorAll("[data-tabs]").forEach(group=>{{
 const buttons=group.querySelectorAll("[data-tab]");
 const panels=group.querySelectorAll("[data-panel]");
@@ -1659,6 +1659,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
         local_routes = {
             "/profile",
             "/recon",
+            "/recon-result",
             "/headers",
             "/lab",
             "/wireless",
@@ -1676,6 +1677,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/accept": lambda: self._accept(data),
             "/profile": lambda: self._run_profile(data),
             "/recon": lambda: self._run_recon(data),
+            "/recon-result": lambda: self._run_recon_result(data),
             "/headers": lambda: self._run_headers(data),
             "/lab": self._prepare_lab,
             "/wireless": lambda: self._run_wireless(data),
@@ -1702,6 +1704,28 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             return ""
         if route == "/recon":
             body = _recon_result(self.state.result)
+            saved = bool(self.state.result.get("saved"))
+            keep_button = ""
+            if not saved:
+                keep_button = (
+                    f"<form method='post' action='/recon-result'>{self._token()}"
+                    "<input type='hidden' name='operation' value='keep'>"
+                    "<button type='submit'>CONSERVER LES DONNEES</button></form>"
+                )
+            report_link = "<a class='button' href='/rapports'>OUVRIR RAPPORTS</a>" if saved else ""
+            return (
+                "<div class='result-modal'><section class='result-panel'>"
+                "<header><div><span class='eyebrow'>Resultat scanner</span>"
+                f"<h2>{escape(self.state.result_title)}</h2></div>"
+                "<form method='post' action='/recon-result'>"
+                f"{self._token()}<input type='hidden' name='operation' value='discard'>"
+                "<button class='back-button' type='submit'>FERMER</button></form></header>"
+                f"{body}<div class='result-actions'>{keep_button}{report_link}"
+                f"<form method='post' action='/recon-result'>{self._token()}"
+                "<input type='hidden' name='operation' value='discard'>"
+                "<button class='danger' type='submit'>NE PAS CONSERVER</button></form>"
+                "</div></section></div>"
+            )
         elif route == "/profile":
             body = _profile_result(self.state.result)
         elif route == "/wireless":
@@ -1743,15 +1767,6 @@ appareils, corréler les preuves et préparer une restitution claire.</p>
 </section><section class="card"><span class="eyebrow">Appareils observés</span>
 <div class="metric">{exposure['asset_count']:02d}</div><p>actifs indexés</p>
 <span class="badge">{exposure['service_count']} services</span></section>
-<section class="card full"><div class="group-label">Kill chain défensive</div>
-<div class="app-grid">
-<a class="app" href="/scanner"><strong>Reconnaissance</strong><span>Réseau, Wi-Fi, Bluetooth, HTTP</span></a>
-<a class="app" href="/scanner"><strong>Scan</strong><span>Hôtes actifs et ports TCP</span></a>
-<a class="app" href="/devices"><strong>Énumération</strong><span>Fiche appareil et services</span></a>
-<a class="app" href="/tools"><strong>Analyse</strong><span>DNS, TLS, journaux, fichiers</span></a>
-<a class="app" href="/kill-chain"><strong>Hypothèses</strong><span>Axes d'action défensifs</span></a>
-<a class="app" href="/reports"><strong>Rapport</strong><span>Preuves, constats et recommandations</span></a>
-</div></section>
 <section class="card full"><div class="group-label">Modules</div>
 <div class="app-grid">
 <a class="app" href="/kill-chain"><strong>Kill Chain</strong><span>Parcours défensif guidé</span></a>
@@ -1887,11 +1902,10 @@ dans le terminal avec <code>run.bat watchdog</code>.</p></section></div>"""
         form_state = {
             "source_discover": False,
             "source_ports": False,
-            "source_wifi": False,
+            "source_wifi": True,
             "source_bluetooth": False,
             "source_http": False,
             "authorized": False,
-            "keep": True,
             "subject": "",
             "network": default_network,
             "target": "",
@@ -1906,112 +1920,58 @@ dans le terminal avec <code>run.bat watchdog</code>.</p></section></div>"""
         def selected(value: str) -> str:
             return " selected" if form_state.get("view") == value else ""
 
-        if not any(form_state.get(name) for name in (
-            "source_discover",
-            "source_ports",
-            "source_wifi",
-            "source_bluetooth",
-            "source_http",
-        )):
+        if not any(
+            form_state.get(name)
+            for name in ("source_discover", "source_ports", "source_wifi", "source_bluetooth", "source_http")
+        ):
             form_state["source_wifi"] = True
         subject_value = escape(str(form_state.get("subject", "")))
         network_value = escape(str(form_state.get("network") or default_network))
         target_value = escape(str(form_state.get("target") or form_state.get("subject") or ""))
         ports_value = escape(str(form_state.get("ports") or settings.default_ports))
-        view_select = f"""<label>Vue des résultats<select name="view">
-<option value="category"{selected("category")}>Catégories séparées</option>
+        view_select = f"""<label>Vue des resultats<select name="view">
+<option value="category"{selected("category")}>Categories separees</option>
 <option value="table"{selected("table")}>Tableaux</option>
 <option value="list"{selected("list")}>Liste avec actions</option>
 </select></label>"""
         consent = (
             f'<label class="check"><input type="checkbox" name="authorized" required{checked("authorized")}>'
-            "Je confirme disposer de l'autorisation sur ce périmètre.</label>"
-        )
-        keep = (
-            f'<label class="check"><input type="checkbox" name="keep"{checked("keep")}>'
-            "Conserver et produire des données réutilisables.</label>"
+            "Je confirme disposer de l'autorisation sur ce perimetre.</label>"
         )
         body = f"""<div class="grid"><section class="card full"><span class="eyebrow">Scanner</span>
-<h2>Recon autorisée</h2><p class="muted">Chaque carte lance une collecte courte,
-lisible et réutilisable. Wi-Fi et Bluetooth utilisent uniquement les API locales
-du système : aucune connexion, capture, désauthentification ou appairage.</p>
-<div class="scanner-grid">
-<article class="scanner-card"><div class="tool-head"><span class="quick-icon">IP</span>
-<div><h3>Scan réseau local</h3><p class="muted">Hôtes actifs sur un réseau privé autorisé.</p></div></div>
-<div class="meta-row"><span class="risk-badge">autorisé</span><span class="status-badge">local</span></div>
-<form method="post" action="/recon">{self._token()}<input type="hidden" name="source_discover" value="1">
-<input type="hidden" name="subject" value="{subject_value}">
-<label>Réseau local autorisé<input name="network" value="{network_value}" placeholder="192.168.1.0/24"></label>
-{view_select}{consent}{keep}<button type="submit">LANCER</button></form></article>
-
-<article class="scanner-card"><div class="tool-head"><span class="quick-icon">WIFI</span>
-<div><h3>Wi-Fi Analyzer</h3><p class="muted">Réseaux visibles par cet appareil, position approximative seulement.</p></div></div>
-<div class="meta-row"><span class="risk-badge">observation</span><span class="status-badge">radio</span></div>
-<form method="post" action="/recon">{self._token()}<input type="hidden" name="source_wifi" value="1">
-<input type="hidden" name="subject" value="wifi-local">{view_select}{consent}{keep}
-<button type="submit">LANCER</button></form></article>
-
-<article class="scanner-card"><div class="tool-head"><span class="quick-icon">BT</span>
-<div><h3>Bluetooth Radar</h3><p class="muted">Appareils connus ou visibles selon ce que l'OS expose.</p></div></div>
-<div class="meta-row"><span class="risk-badge">observation</span><span class="status-badge">proximité</span></div>
-<form method="post" action="/recon">{self._token()}<input type="hidden" name="source_bluetooth" value="1">
-<input type="hidden" name="subject" value="bluetooth-local">{view_select}{consent}{keep}
-<button type="submit">LANCER</button></form></article>
-
-<article class="scanner-card"><div class="tool-head"><span class="quick-icon">TCP</span>
-<div><h3>Scan ports autorisé</h3><p class="muted">Ports TCP sur une cible privée ou explicitement autorisée.</p></div></div>
-<div class="meta-row"><span class="risk-badge">autorisé</span><span class="status-badge">service</span></div>
-<form method="post" action="/recon">{self._token()}<input type="hidden" name="source_ports" value="1">
-<input type="hidden" name="subject" value="{target_value}">
-<label>Cible<input name="target" value="{target_value}" placeholder="192.168.1.25 ou localhost"></label>
-<label>Ports<input name="ports" value="{ports_value}" placeholder="22,80,443 ou 1-1024"></label>
-{view_select}{consent}{keep}<button type="submit">LANCER</button></form></article>
-
-<article class="scanner-card"><div class="tool-head"><span class="quick-icon">HTTP</span>
-<div><h3>Site public passif</h3><p class="muted">Lecture des en-têtes HTTP sans injection ni fuzzing.</p></div></div>
-<div class="meta-row"><span class="risk-badge">passif</span><span class="status-badge">web</span></div>
-<form method="post" action="/recon">{self._token()}<input type="hidden" name="source_http" value="1">
-<input type="hidden" name="subject" value="{target_value}">
-<label>URL ou hôte<input name="target" value="{target_value}" placeholder="https://example.org"></label>
-{view_select}{consent}{keep}<button type="submit">LANCER</button></form></article>
-
-<article class="scanner-card"><div class="tool-head"><span class="quick-icon">PKT</span>
-<div><h3>Packet Observer</h3><p class="muted">Lecture pedagogique de logs trafic type mini Wireshark.</p></div></div>
-<div class="meta-row"><span class="risk-badge">lecture</span><span class="status-badge">actif</span></div>
-<p class="muted">L'outil lit des lignes fournies ou une demo locale : aucune capture interface, aucun dechiffrement HTTPS.</p>
-<a class="button" href="/tools">VOIR OUTILS</a></article>
-</div></section>
-
-<section class="card full"><details><summary><strong>Combiner plusieurs sources</strong></summary>
+<h2>Recon autorisee</h2><p class="muted">Choisissez un ou plusieurs modules. Les champs utiles apparaissent ensuite,
+puis le resultat s'ouvre dans une fenetre. La conservation des donnees se decide apres lecture.</p>
 <form method="post" action="/recon">{self._token()}
 <div class="quick-grid">
 <label class="quick-toggle"><input type="checkbox" name="source_discover"{checked("source_discover")}>
-<span class="quick-icon">IP</span><strong>Réseau IP</strong><span>Hôtes actifs</span></label>
+<span class="quick-icon">IP</span><strong>Reseau IP</strong><span>Hotes actifs</span></label>
 <label class="quick-toggle"><input type="checkbox" name="source_ports"{checked("source_ports")}>
 <span class="quick-icon">TCP</span><strong>Ports TCP</strong><span>Services ouverts</span></label>
 <label class="quick-toggle"><input type="checkbox" name="source_wifi"{checked("source_wifi")}>
-<span class="quick-icon">WIFI</span><strong>Wi-Fi</strong><span>Réseaux visibles</span></label>
+<span class="quick-icon">WIFI</span><strong>Wi-Fi</strong><span>Reseaux visibles</span></label>
 <label class="quick-toggle"><input type="checkbox" name="source_bluetooth"{checked("source_bluetooth")}>
 <span class="quick-icon">BT</span><strong>Bluetooth</strong><span>Inventaire OS</span></label>
 <label class="quick-toggle"><input type="checkbox" name="source_http"{checked("source_http")}>
-<span class="quick-icon">HTTP</span><strong>HTTP</strong><span>En-têtes passifs</span></label>
+<span class="quick-icon">HTTP</span><strong>HTTP</strong><span>Entetes passifs</span></label>
+<a class="quick-toggle" href="/tools"><span class="quick-icon">PKT</span><strong>Packet Observer</strong>
+<span>Logs reseau pedagogiques</span></a>
 </div><input type="hidden" name="subject" value="{subject_value}">
-<div class="recon-fields"><label data-recon-field="network">Réseau local autorisé
+<div class="recon-fields"><label data-recon-field="network">Reseau local autorise
 <input name="network" value="{network_value}" placeholder="192.168.1.0/24"></label>
 <label data-recon-field="target">Cible IP, nom local ou URL
 <input name="target" value="{target_value}" placeholder="192.168.1.25 ou http://192.168.1.25"></label>
 <label data-recon-field="ports">Ports
 <input name="ports" value="{ports_value}" placeholder="22,80,443 ou 1-1024"></label></div>
-{view_select}{consent}{keep}<button type="submit">EXÉCUTER LA RECON COMBINÉE</button></form></details></section>
-
+{view_select}{consent}<button type="submit">LANCER LE SCAN</button></form></section>
 <section class="card full"><h2>Conditions</h2><ul class="clean">
-<li>IP/ports : uniquement réseau privé, localhost ou cible explicitement autorisée.</li>
-<li>Wi-Fi : nécessite les droits système/localisation selon Windows, Linux ou Termux.</li>
+<li>IP/ports : uniquement reseau prive, localhost ou cible explicitement autorisee.</li>
+<li>Wi-Fi : necessite les droits systeme/localisation selon Windows, Linux ou Termux.</li>
 <li>Bluetooth : inventaire OS uniquement, sans appairage ni interaction active.</li>
-<li>HTTP : lecture passive d'en-têtes sur une URL fournie.</li>
-<li>Trafic : lecture pédagogique prévue, sans déchiffrement HTTPS.</li></ul></section>
+<li>HTTP : lecture passive d'entetes sur une URL fournie.</li>
+<li>Trafic : lecture pedagogique prevue, sans dechiffrement HTTPS.</li></ul></section>
 {self._result("/recon")}</div>"""
         self._send(render_layout("Scanner", body))
+        return
 
     def _run_recon(self, data: dict[str, list[str]]) -> None:
         self._clear()
@@ -2025,7 +1985,6 @@ du système : aucune connexion, capture, désauthentification ou appairage.</p>
                 "source_bluetooth": _checked(data, "source_bluetooth"),
                 "source_http": _checked(data, "source_http"),
                 "authorized": _checked(data, "authorized"),
-                "keep": _checked(data, "keep"),
                 "subject": _field(data, "subject"),
                 "network": _field(data, "network"),
                 "target": _field(data, "target"),
@@ -2048,8 +2007,7 @@ du système : aucune connexion, capture, désauthentification ou appairage.</p>
                 categories["network"] = {"title": "Réseau IP", "engine": engine, "items": results}
                 suggestions.append("Sélectionner une IP découverte puis ouvrir Profiler ou Scanner ports.")
                 ran_any = True
-                if _checked(data, "keep"):
-                    save_history("discovery", network_subject, engine, results)
+                # History is now saved only after the operator confirms the result modal.
             if _checked(data, "source_ports"):
                 if not target_subject:
                     raise ValueError("Indiquez une cible privée pour le scan de ports.")
@@ -2069,8 +2027,7 @@ du système : aucune connexion, capture, désauthentification ou appairage.</p>
                 }
                 suggestions.append("Ouvrir HTTP pour les ports web ou Profiler pour consolider l'actif.")
                 ran_any = True
-                if _checked(data, "keep"):
-                    save_history("port_scan", target_subject, engine, results, ports=ports)
+                # History is now saved only after the operator confirms the result modal.
             if _checked(data, "source_wifi"):
                 wifi = wifi_scan()
                 categories["wifi"] = {
@@ -2108,22 +2065,18 @@ du système : aucune connexion, capture, désauthentification ou appairage.</p>
             if not ran_any:
                 raise ValueError("Activez au moins une source de reconnaissance.")
             records = {"artifacts": [], "events": [], "correlations": []}
-            if _checked(data, "keep"):
-                records = save_recon_records(
-                    categories,
-                    subject=target_subject or network_subject,
-                    scope="local_authorized",
-                )
             self.state.result_title = "Résultat de reconnaissance"
             self.state.result_route = "/recon"
             self.state.result = {
                 "subject": target_subject or network_subject,
+                "save_subject": target_subject or network_subject,
                 "network": network_subject,
                 "target": target_subject,
                 "view": view,
                 "duration_seconds": round(time.monotonic() - started, 2),
                 "categories": categories,
                 "suggestions": suggestions,
+                "saved": False,
                 "records": {
                     "artifacts": len(records["artifacts"]),
                     "events": len(records["events"]),
@@ -2132,6 +2085,37 @@ du système : aucune connexion, capture, désauthentification ou appairage.</p>
             }
         except (ValueError, OSError) as exc:
             self.state.error = str(exc)
+        self._redirect("/recon")
+
+    def _run_recon_result(self, data: dict[str, list[str]]) -> None:
+        operation = _field(data, "operation", "discard")
+        if operation == "keep":
+            result = self.state.result if self.state.result_route == "/recon" else None
+            if not result:
+                self.state.error = "Aucun resultat de reconnaissance a conserver."
+                self._redirect("/recon")
+                return
+            categories = result.get("categories", {})
+            if not isinstance(categories, dict):
+                self.state.error = "Resultat de reconnaissance invalide."
+                self._redirect("/recon")
+                return
+            saved = save_recon_records(
+                categories,
+                subject=str(result.get("save_subject") or result.get("subject") or "scanner"),
+                scope="local_authorized",
+            )
+            result["records"] = {
+                "artifacts": len(saved["artifacts"]),
+                "events": len(saved["events"]),
+                "correlations": len(saved["correlations"]),
+            }
+            result["saved"] = True
+            self.state.result = result
+            self.state.message = "Donnees de reconnaissance conservees."
+        else:
+            self._clear()
+            self.state.message = "Resultat ignore."
         self._redirect("/recon")
 
     def _profile(self) -> None:
