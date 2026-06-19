@@ -68,6 +68,7 @@ from .records import (
     TimelineEvent,
     delete_all_records,
     delete_record,
+    generate_correlations_from_records,
     list_records,
     load_record,
     record_display_name,
@@ -1067,6 +1068,59 @@ def _nfc_payload(data: dict[str, list[str]]) -> dict[str, Any]:
             "Mode lab recommande pour les donnees NDEF hexadecimales de demonstration.",
         ],
     }
+
+
+def _save_records_report(title: str = "Synthese recon SC") -> Path:
+    artifacts = [load_record(path) for path in list_records("artifact")[:80]]
+    events = [load_record(path) for path in list_records("event")[:80]]
+    correlations = [load_record(path) for path in list_records("correlation")[:80]]
+
+    def bullet(items: list[str]) -> str:
+        return "\n".join(f"- {item}" for item in items) or "- Aucun element."
+
+    artifact_lines = [
+        f"{item.get('title', 'Artefact')} | {item.get('kind', '')} | {item.get('risk', 'info')} | {item.get('summary', '')}"
+        for item in artifacts
+    ]
+    event_lines = [
+        f"{item.get('created_at', '')} | {item.get('level', 'info')} | {item.get('description', '')}"
+        for item in events
+    ]
+    finding_lines = []
+    recommendation_lines = []
+    for item in correlations:
+        finding_lines.append(
+            f"{item.get('title', 'Correlation')} | {item.get('severity', 'info')} | {item.get('hypothesis', '')}"
+        )
+        recommendations = item.get("recommendations", [])
+        if isinstance(recommendations, list):
+            recommendation_lines.extend(str(entry) for entry in recommendations)
+    recommendation_lines = list(dict.fromkeys(recommendation_lines))
+    return save_professional_report(
+        title,
+        "Donnees locales conservees dans recon SC, collectees sur perimetre autorise.",
+        (
+            f"Synthese generee depuis {len(artifacts)} artefact(s), "
+            f"{len(events)} evenement(s) timeline et {len(correlations)} correlation(s)."
+        ),
+        [
+            {
+                "severity": str(item.get("severity", "information")),
+                "title": str(item.get("title", "Correlation")),
+                "evidence": "; ".join(str(e) for e in item.get("evidence", [])[:4])
+                if isinstance(item.get("evidence", []), list) else str(item.get("evidence", "")),
+                "impact": str(item.get("hypothesis", "A evaluer.")),
+            }
+            for item in correlations
+        ],
+        recommendation_lines or ["Maintenir la collecte et documenter les observations utiles."],
+        (
+            "Rapport genere automatiquement depuis les donnees locales. "
+            "Les hypotheses doivent etre validees manuellement avant presentation finale.\n\n"
+            "Artefacts:\n" + bullet(artifact_lines[:40]) + "\n\nTimeline:\n" + bullet(event_lines[:40]) +
+            "\n\nCorrelations:\n" + bullet(finding_lines[:40])
+        ),
+    )
 
 
 def _field(data: dict[str, list[str]], name: str, default: str = "") -> str:
@@ -2267,6 +2321,15 @@ data-confirm="Supprimer tous les rapports, historiques et missions ? Cette actio
 {self._token()}<input type="hidden" name="scope" value="all">
 <input type="hidden" name="operation" value="delete_all">
 <button class="danger" type="submit">TOUT SUPPRIMER</button></form>"""
+        report_tools = f"""<div class="action-row">
+<form class="compact" method="post" action="/data">{self._token()}
+<input type="hidden" name="scope" value="records">
+<input type="hidden" name="operation" value="correlate">
+<button type="submit">GENERER CORRELATIONS</button></form>
+<form class="compact" method="post" action="/data">{self._token()}
+<input type="hidden" name="scope" value="records">
+<input type="hidden" name="operation" value="build_report">
+<button type="submit">COMPILER RAPPORT</button></form></div>"""
         body = f"""{feedback}<section class="card full" data-tabs>
 <h2>Rapports et preuves locales</h2><p class="muted">Consultez, renommez ou supprimez les
 éléments stockés par recon SC.</p><div class="tabs">
@@ -2277,7 +2340,7 @@ data-confirm="Supprimer tous les rapports, historiques et missions ? Cette actio
 <button class="tab-button" type="button" data-tab="correlations">CorrÃ©lations</button>
 <button class="tab-button" type="button" data-tab="missions">Missions</button>
 <button class="tab-button" type="button" data-tab="cleanup">Nettoyage</button></div>
-<div class="tab-panel active" data-panel="reports"><ul class="clean">{report_items}</ul></div>
+<div class="tab-panel active" data-panel="reports">{report_tools}<ul class="clean">{report_items}</ul></div>
 <div class="tab-panel" data-panel="history"><ul class="clean">{histories}</ul></div>
 <div class="tab-panel" data-panel="artifacts">{_artifact_board()}<h3>Gestion</h3><ul class="clean">{artifact_items}</ul></div>
 <div class="tab-panel" data-panel="timeline">{_timeline_board()}<h3>Gestion</h3><ul class="clean">{event_items}</ul></div>
@@ -2304,6 +2367,18 @@ Cette action efface toutes les données générées, mais pas le code du projet.
                     f"{histories} historique(s), {reports} rapport(s) et "
                     f"{missions} mission(s) supprimé(s)."
                 )
+            elif scope == "records":
+                if operation == "correlate":
+                    stats = generate_correlations_from_records()
+                    self.state.message = (
+                        f"{stats['generated']} correlation(s) ajoutee(s) "
+                        f"depuis {stats['artifacts']} artefact(s)."
+                    )
+                elif operation == "build_report":
+                    path = _save_records_report()
+                    self.state.message = f"Rapport compile : {path.name}"
+                else:
+                    raise ValueError("Action de donnees structurees inconnue.")
             elif scope == "report":
                 path = self._stored_path(list_reports(), name)
                 if operation == "rename":

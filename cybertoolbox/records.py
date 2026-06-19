@@ -114,6 +114,28 @@ def records_summary(root: Path = RECORDS_DIR) -> dict[str, int]:
     }
 
 
+def generate_correlations_from_records(root: Path = RECORDS_DIR) -> dict[str, int]:
+    artifacts = [_artifact_from_payload(load_record(path, root)) for path in list_records("artifact", root)]
+    artifacts = [artifact for artifact in artifacts if artifact is not None]
+    candidates: list[Correlation] = []
+    for artifact in artifacts:
+        candidates.extend(_correlations_for_artifact(artifact))
+    candidates.extend(_cross_correlations(artifacts))
+    existing = {
+        _correlation_key(load_record(path, root))
+        for path in list_records("correlation", root)
+    }
+    saved = 0
+    for correlation in candidates:
+        key = _correlation_key(asdict(correlation))
+        if key in existing:
+            continue
+        save_record(correlation, root)
+        existing.add(key)
+        saved += 1
+    return {"generated": saved, "candidates": len(candidates), "artifacts": len(artifacts)}
+
+
 def save_recon_records(
     categories: dict[str, dict[str, Any]],
     *,
@@ -155,6 +177,26 @@ def save_recon_records(
         "events": saved_events,
         "correlations": saved_correlations,
     }
+
+
+def _artifact_from_payload(payload: dict[str, Any]) -> Artifact | None:
+    if "kind" not in payload or "data" not in payload:
+        return None
+    fields = {
+        "kind": str(payload.get("kind", "")),
+        "source": str(payload.get("source", "")),
+        "title": str(payload.get("title", "")),
+        "summary": str(payload.get("summary", "")),
+        "value": str(payload.get("value", "")),
+        "confidence": str(payload.get("confidence", "faible")),
+        "risk": str(payload.get("risk", "info")),
+        "scope": str(payload.get("scope", "local_authorized")),
+        "tags": payload.get("tags", []) if isinstance(payload.get("tags"), list) else [],
+        "data": payload.get("data", {}) if isinstance(payload.get("data"), dict) else {},
+        "created_at": str(payload.get("created_at", "")),
+        "id": str(payload.get("id", "")),
+    }
+    return Artifact(**fields)
 
 
 def _artifact_from_recon_item(
@@ -402,6 +444,17 @@ def _event_level(risk: str) -> str:
 
 def _save_and_load(record: Artifact | TimelineEvent | Correlation, root: Path) -> dict[str, Any]:
     return load_record(save_record(record, root), root)
+
+
+def _correlation_key(payload: dict[str, Any]) -> tuple[str, str, tuple[str, ...]]:
+    evidence = payload.get("evidence", [])
+    if not isinstance(evidence, list):
+        evidence = [str(evidence)]
+    return (
+        str(payload.get("title", "")).strip().lower(),
+        str(payload.get("hypothesis", "")).strip().lower(),
+        tuple(sorted(str(item).strip().lower() for item in evidence if str(item).strip())),
+    )
 
 
 def _record_type(payload: dict[str, Any]) -> str:

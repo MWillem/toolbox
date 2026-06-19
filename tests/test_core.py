@@ -67,10 +67,13 @@ from cybertoolbox.reports import (
     save_professional_report,
 )
 from cybertoolbox.records import (
+    Artifact,
     delete_all_records,
+    generate_correlations_from_records,
     list_records,
     load_record,
     records_summary,
+    save_record,
     save_recon_records,
 )
 from cybertoolbox.safety import parse_ports, parse_private_network, resolve_authorized_target
@@ -698,6 +701,41 @@ class LabTests(unittest.TestCase):
             artifact_paths = list_records("artifact", root)
             self.assertTrue(artifact_paths[0].read_text(encoding="utf-8").strip().startswith("{"))
             self.assertGreater(delete_all_records(root=root), 0)
+
+    def test_global_correlation_reuses_saved_artifacts_without_duplicates(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            save_record(
+                Artifact(
+                    kind="device",
+                    source="test",
+                    title="192.168.1.10",
+                    summary="Appareil actif detecte: 192.168.1.10",
+                    value="192.168.1.10",
+                    confidence="moyenne",
+                    data={"address": "192.168.1.10"},
+                ),
+                root,
+            )
+            for port, service in ((445, "smb"), (80, "http")):
+                save_record(
+                    Artifact(
+                        kind="service",
+                        source="test",
+                        title=f"192.168.1.10:{port}",
+                        summary=f"Port ouvert detecte: {port}/tcp {service}",
+                        value=str(port),
+                        confidence="moyenne",
+                        data={"address": "192.168.1.10", "port": port, "service": service},
+                    ),
+                    root,
+                )
+            first = generate_correlations_from_records(root)
+            second = generate_correlations_from_records(root)
+            self.assertGreaterEqual(first["generated"], 1)
+            self.assertEqual(second["generated"], 0)
+            titles = {load_record(path, root)["title"] for path in list_records("correlation", root)}
+            self.assertIn("NAS probable", titles)
 
 
 if __name__ == "__main__":
