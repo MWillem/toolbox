@@ -225,8 +225,8 @@ color:var(--text);box-shadow:0 14px 34px rgba(0,0,0,.24)}
 background:rgba(0,0,0,.46);backdrop-filter:blur(12px)}
 .dashboard-modal:target{display:grid}.dashboard-modal .result-panel{display:block}
 .icon-button{display:grid;place-items:center;width:42px;height:42px;padding:0;border-radius:50%;font-size:20px}
-.dashboard-board{grid-column:1/-1;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));
-grid-auto-rows:minmax(104px,auto);gap:12px;align-content:start;max-width:1180px;width:100%;justify-self:center}
+.dashboard-board{grid-column:1/-1;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
+gap:14px;align-content:start;width:min(100%,1260px);justify-self:center}
 .dash-tile{position:relative;display:grid;gap:8px;min-height:104px;padding:14px;border:1px solid var(--line);
 border-radius:var(--radius);background:var(--panel);backdrop-filter:blur(24px) saturate(145%);
 color:var(--text);box-shadow:0 14px 34px rgba(0,0,0,.24);overflow:hidden}
@@ -234,11 +234,26 @@ color:var(--text);box-shadow:0 14px 34px rgba(0,0,0,.24);overflow:hidden}
 box-shadow:0 0 12px var(--signal)}
 .dash-tile.size-s{grid-column:span 1}.dash-tile.size-m{grid-column:span 2}.dash-tile.size-l{grid-column:span 3}
 .dash-tile.size-xl{grid-column:1/-1}.dash-tile.size-tall{grid-column:span 3;grid-row:span 2}
-.dash-tile strong{font-size:clamp(16px,2vw,24px);color:var(--accent);overflow-wrap:anywhere}
+.dash-tile strong{font-size:20px;line-height:1.18;color:var(--accent);overflow-wrap:anywhere}
 .dash-tile span,.dash-tile small{color:var(--muted)}.dash-tile .app-grid{grid-template-columns:repeat(auto-fit,minmax(98px,1fr))}
 .dash-tile.size-s .tile-detail,.dash-tile.size-s .tile-extra,.dash-tile.size-s .app-grid{display:none}.dash-tile.size-s small{font-size:10px}
 .dash-tile.size-m .tile-extra{display:none}.widget-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:auto}
 .widget-actions a{border-radius:999px;clip-path:none;padding:6px 9px;font-size:12px}
+.dashboard-metrics{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.dash-metric{min-height:92px;padding:14px;border:1px solid var(--line);border-radius:var(--radius);
+background:var(--panel);backdrop-filter:blur(22px) saturate(140%);display:grid;align-content:space-between;gap:8px}
+.dash-metric span{color:var(--muted);font-size:12px}.dash-metric strong{color:var(--accent);font-size:26px;line-height:1}
+.dash-metric small{color:var(--muted);font-size:11px}.dashboard-hero{grid-column:span 8;min-height:270px}
+.dashboard-actions,.dashboard-config{grid-column:span 4}.dashboard-activity{grid-column:span 6}.dashboard-modules{grid-column:span 8}
+.dashboard-actions{align-content:start}.dashboard-action-list{display:grid;gap:10px}.dashboard-action{
+display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);
+border-radius:12px;background:rgba(var(--panel-rgb),.38);text-decoration:none;color:var(--text)}
+.dashboard-action strong{font-size:14px;color:var(--text)}.dashboard-action span{font-size:12px}.dashboard-action b{color:var(--signal)}
+.dashboard-board .metric-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.dashboard-board .metric-card{
+padding:10px;min-height:76px}.dashboard-board .metric-card strong{font-size:22px}.dashboard-board .metric-card span{font-size:11px}
+.dashboard-board .timeline{gap:6px;max-height:280px;overflow:auto;padding-right:4px}.dashboard-board .timeline-item{
+padding:8px 0 8px 12px}.dashboard-board .timeline-item strong{font-size:14px;line-height:1.35;color:var(--text)}
+.dashboard-board .timeline-item .muted{font-size:11px}.dashboard-board .status-badge{font-size:10px;padding:3px 7px}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;
 vertical-align:top}th{color:var(--signal)}.key-table>tbody>tr>th{width:28%;
@@ -408,8 +423,10 @@ grid-column:1/-1}.topline{display:block}.table-wrap{overflow-x:auto}
 .app{min-height:118px;padding:8px}.app:before,.quick-icon{width:56px;height:56px;font-size:12px}
 .quick-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.quick-toggle{padding:8px}
 .dashboard-board{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.dash-tile.size-s,.dash-tile.size-m{grid-column:span 2}
-.dash-tile.size-l,.dash-tile.size-xl,.dash-tile.size-tall{grid-column:1/-1}
+.dashboard-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.dashboard-hero,.dashboard-actions,.dashboard-activity,.dashboard-modules,.dashboard-config,
+.dash-tile.size-s,.dash-tile.size-m,.dash-tile.size-l,.dash-tile.size-xl,.dash-tile.size-tall{grid-column:1/-1}
+.dashboard-board .metric-row{grid-template-columns:1fr}
 .context-bar{position:sticky;top:0;z-index:4;font-size:12px;background:rgba(var(--panel-rgb),.96)}
 .geo-tools{grid-template-columns:1fr}.geo-tool-row{grid-template-columns:1fr}.geo-map{height:56vh}
 h1{font-size:26px}.card{padding:16px}}
@@ -1805,32 +1822,27 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
         settings_panel = _value(dict(settings_summary(settings)))
         body = f"""<div class="grid">
 <section class="dashboard-board" data-dashboard-board aria-label="Dashboard">
-<article class="dash-tile size-s" data-widget-id="assets"><span>Appareils observes</span>
-<strong>{exposure['asset_count']:02d}</strong><small>{exposure['service_count']} services indexes</small>
-<div class="widget-actions"><a href="/devices">Ouvrir</a></div></article>
-<article class="dash-tile size-m" data-widget-id="records"><span>Donnees reutilisables</span>
-<div class="tile-detail">{record_metrics}</div><div class="widget-actions"><a href="/reports">Ouvrir</a></div></article>
-<article class="dash-tile size-m" data-widget-id="timeline"><span>Timeline recente</span>
-<div class="tile-detail">{timeline}</div><div class="widget-actions"><a href="/reports#timeline">Ouvrir</a></div></article>
-<article class="dash-tile size-s" data-widget-id="config"><span>Configuration active</span>
-<strong>{escape(settings.theme)}</strong><small>Mode {escape(settings.app_color_mode)} - carte {escape(settings.map_color_mode)}</small>
-<div class="widget-actions"><a href="#config-active">Details</a></div></article>
-<article class="dash-tile size-l kill-zone" data-widget-id="kill-chain"><span>Parcours defensif</span>
+<div class="dashboard-metrics">
+<article class="dash-metric"><span>Appareils observes</span><strong>{exposure['asset_count']:02d}</strong><small>{exposure['service_count']} services indexes</small></article>
+<article class="dash-metric"><span>Historiques</span><strong>{history_count}</strong><small>sessions et resultats</small></article>
+<article class="dash-metric"><span>Rapports</span><strong>{len(list_reports())}</strong><small>exports disponibles</small></article>
+<article class="dash-metric"><span>Theme actif</span><strong>{escape(settings.theme)}</strong><small>{escape(settings.app_color_mode)} / carte {escape(settings.map_color_mode)}</small></article>
+</div>
+<article class="dash-tile dashboard-hero kill-zone" data-widget-id="kill-chain"><span>Parcours defensif</span>
 <p class="muted tile-detail">Collecter, transformer en donnee reutilisable, correler, puis restituer.</p>
 <div class="app-grid tile-extra">{kill_cards}</div><div class="widget-actions"><a href="/kill-chain">Ouvrir</a></div></article>
-<article class="dash-tile size-m" data-widget-id="quick-full-scan"><span>Action rapide</span><strong>Scan complet</strong>
-<small>Preselection de toutes les sources de recon.</small>
-<div class="widget-actions"><a href="/scanner?source_discover=1&source_ports=1&source_wifi=1&source_bluetooth=1&source_http=1">Lancer</a></div></article>
-<article class="dash-tile size-m" data-widget-id="quick-scanner"><span>Scanner</span><strong>Choisir</strong>
-<small>Selectionner une ou plusieurs sources.</small>
-<div class="widget-actions"><a href="/scanner">Ouvrir</a></div></article>
-<article class="dash-tile size-m" data-widget-id="quick-packet"><span>Packet Observer</span><strong>Logs</strong>
-<small>Lire des logs reseau pedagogiques.</small>
-<div class="widget-actions"><a href="/tools">Ouvrir</a></div></article>
-<article class="dash-tile size-m" data-widget-id="quick-reports"><span>Rapports</span><strong>{history_count}</strong>
-<small>{history_count} historiques / {len(list_reports())} rapports</small>
-<div class="widget-actions"><a href="/reports">Ouvrir</a></div></article>
-<article class="dash-tile size-l" data-widget-id="modules"><span>Modules</span><div class="app-grid tile-extra">
+<article class="dash-tile dashboard-actions" data-widget-id="actions"><span>Actions rapides</span>
+<div class="dashboard-action-list">
+<a class="dashboard-action" href="/scanner"><span><strong>Scanner cible</strong><br>Choisir une ou plusieurs sources</span><b>Ouvrir</b></a>
+<a class="dashboard-action" href="/scanner?source_discover=1&source_ports=1&source_wifi=1&source_bluetooth=1&source_http=1"><span><strong>Recon complete</strong><br>Preset de collecte locale</span><b>Lancer</b></a>
+<a class="dashboard-action" href="/tools"><span><strong>Packet Observer</strong><br>Lire DNS, TCP, ARP et logs</span><b>Ouvrir</b></a>
+<a class="dashboard-action" href="/reports"><span><strong>Rapports</strong><br>Timeline, artefacts, correlations</span><b>Voir</b></a>
+</div></article>
+<article class="dash-tile dashboard-activity" data-widget-id="records"><span>Donnees reutilisables</span>
+<div class="tile-detail">{record_metrics}</div><div class="widget-actions"><a href="/reports">Ouvrir</a></div></article>
+<article class="dash-tile dashboard-activity" data-widget-id="timeline"><span>Timeline recente</span>
+<div class="tile-detail">{timeline}</div><div class="widget-actions"><a href="/reports#timeline">Ouvrir</a></div></article>
+<article class="dash-tile dashboard-modules" data-widget-id="modules"><span>Modules</span><div class="app-grid tile-extra">
 <a class="app" href="/devices"><strong>Appareils</strong><span>Profil et confiance</span></a>
 <a class="app" href="/monitoring"><strong>Monitoring</strong><span>Sante locale et exposition</span></a>
 <a class="app" href="/map"><strong>Carte</strong><span>Carte et topologie reseau</span></a>
@@ -1838,6 +1850,9 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
 <a class="app" href="/missions"><strong>Missions</strong><span>Scenarios pedagogiques</span></a>
 <a class="app" href="/reports"><strong>Rapports</strong><span>{history_count} historiques / {len(list_reports())} rapports</span></a>
 </div></article>
+<article class="dash-tile dashboard-config" data-widget-id="config"><span>Configuration</span>
+<strong>{escape(settings.theme)}</strong><small>Mode {escape(settings.app_color_mode)} - carte {escape(settings.map_color_mode)}</small>
+<div class="widget-actions"><a href="#config-active">Details</a><a href="/settings">Reglages</a></div></article>
 </section>
 <div class="dashboard-modal" id="config-active"><section class="result-panel">
 <header><div><span class="eyebrow">Dashboard</span><h2>Configuration active</h2></div>
