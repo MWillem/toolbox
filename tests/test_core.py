@@ -59,7 +59,7 @@ from cybertoolbox.history import (
     rename_history,
     save_history,
 )
-from cybertoolbox.mission import service_recommendations
+from cybertoolbox.mission import create_mission_from_template, mission_templates, service_recommendations
 from cybertoolbox.reports import (
     delete_all_reports,
     export_report,
@@ -514,6 +514,21 @@ class LabTests(unittest.TestCase):
         )
         self.assertTrue(any("HTTPS" in item for item in recommendations))
         self.assertTrue(any("SSH" in item for item in recommendations))
+
+    def test_guided_mission_templates_can_be_saved(self):
+        self.assertGreaterEqual(len(mission_templates()), 5)
+        with tempfile.TemporaryDirectory() as directory:
+            from cybertoolbox import mission
+
+            previous = mission.MISSIONS_DIR
+            mission.MISSIONS_DIR = Path(directory)
+            try:
+                path = create_mission_from_template("traffic-reading-lab")
+                payload = path.read_text(encoding="utf-8")
+            finally:
+                mission.MISSIONS_DIR = previous
+        self.assertIn("Lecture trafic pedagogique", payload)
+        self.assertIn("Packet Observer", payload)
 
     def test_professional_report_exports(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -50,9 +50,11 @@ from .labs.wireless import (
     wireless_diagnostics,
 )
 from .mission import (
+    create_mission_from_template,
     delete_all_missions,
     delete_mission,
     list_missions,
+    mission_templates,
     rename_mission,
 )
 from .reports import (
@@ -1661,6 +1663,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/lab",
             "/wireless",
             "/exposure",
+            "/missions",
             "/context",
             "/tools",
             "/data",
@@ -1677,6 +1680,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/lab": self._prepare_lab,
             "/wireless": lambda: self._run_wireless(data),
             "/exposure": lambda: self._run_exposure(data),
+            "/missions": lambda: self._run_missions(data),
             "/context": lambda: self._run_context(data),
             "/tools": lambda: self._run_tools(data),
             "/data": lambda: self._run_data(data),
@@ -1812,21 +1816,51 @@ connecté au réseau ou d'avoir une route explicitement autorisée.</p></section
         self._send(render_layout("Monitoring", body))
 
     def _missions(self) -> None:
+        feedback = ""
+        if self.state.message:
+            feedback = f'<div class="notice">{escape(self.state.message)}</div>'
+            self.state.message = ""
+        elif self.state.error:
+            feedback = f'<div class="notice error">{escape(self.state.error)}</div>'
+            self.state.error = ""
         missions = list_missions()
         mission_count = len(missions)
-        body = f"""<div class="grid"><section class="card wide">
+        template_cards = "".join(
+            "<article class='scanner-card'>"
+            f"<div class='tool-head'><span class='quick-icon'>MIS</span><div><h3>{escape(str(item['name']))}</h3>"
+            f"<p class='muted'>{escape(str(item['objective']))}</p></div></div>"
+            f"<div class='meta-row'><span class='risk-badge'>lab</span><span class='status-badge'>{escape(str(item['scope']))}</span></div>"
+            f"<details><summary>Etapes</summary>{_value(item.get('steps', []))}</details>"
+            f"<details><summary>Preuves attendues</summary>{_value(item.get('expected_evidence', []))}</details>"
+            f"<p class='muted'>{escape(str(item['safety']))}</p>"
+            f"<form method='post' action='/missions'>{self._token()}"
+            f"<input type='hidden' name='template_id' value='{escape(str(item['id']))}'>"
+            "<button type='submit'>CREER LA MISSION</button></form></article>"
+            for item in mission_templates()
+        )
+        body = f"""{feedback}<div class="grid"><section class="card wide">
 <span class="eyebrow">Labs autorisés</span><h2>Missions</h2>
 <p>Scénarios courts pour apprendre à collecter, lire et corréler des preuves.
 Les missions offensives restent simulées, offline ou locales.</p>
 <a class="button" href="/lab">PRÉPARER UN LAB LOCAL</a></section>
 <section class="card"><span class="eyebrow">Progression</span>
 <div class="metric">{mission_count:02d}</div><p>missions enregistrées</p></section>
+<section class="card full"><h2>Missions guidees</h2><div class="scanner-grid">{template_cards}</div></section>
 <section class="card full"><h2>Parcours proposés</h2><div class="app-grid">
 <a class="app" href="/scanner"><strong>Mission réseau</strong><span>Découvrir puis profiler un actif autorisé</span></a>
 <a class="app" href="/wireless"><strong>Mission sans-fil</strong><span>Observer Wi-Fi/Bluetooth sans connexion</span></a>
 <a class="app" href="/lab"><strong>Mission lab</strong><span>Journaux, payload factice et script local</span></a>
 </div></section></div>"""
         self._send(render_layout("Missions", body))
+
+    def _run_missions(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            path = create_mission_from_template(_field(data, "template_id"))
+            self.state.message = f"Mission creee : {path.name}"
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/missions")
 
     def _operations(self) -> None:
         body = """<div class="grid"><section class="card wide">

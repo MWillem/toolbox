@@ -53,6 +53,105 @@ def service_recommendations(services: list[dict[str, object]]) -> list[str]:
     return list(dict.fromkeys(recommendations))
 
 
+def mission_templates() -> list[dict[str, object]]:
+    return [
+        {
+            "id": "local-network-baseline",
+            "name": "Baseline reseau local",
+            "scope": "Reseau prive autorise",
+            "objective": "Identifier les appareils actifs, les services ouverts et les premieres hypotheses.",
+            "tools": ["Scanner IP", "Scan ports", "Device Profiler", "Rapports"],
+            "steps": [
+                "Confirmer le perimetre autorise.",
+                "Lancer une decouverte reseau locale.",
+                "Profiler un appareil observe.",
+                "Generer les correlations puis compiler un rapport.",
+            ],
+            "expected_evidence": ["Artefacts device/service", "Timeline", "Correlation NAS/routeur/camera si applicable"],
+            "safety": "Pas de scan Internet, pas d'exploitation, pas de tentative d'authentification.",
+        },
+        {
+            "id": "wireless-observation",
+            "name": "Observation radio Wi-Fi Bluetooth",
+            "scope": "Appareil courant et signaux visibles",
+            "objective": "Observer ce que l'OS expose sur les reseaux Wi-Fi et appareils Bluetooth proches.",
+            "tools": ["Wi-Fi Analyzer", "Bluetooth Radar", "Timeline", "Correlation"],
+            "steps": [
+                "Verifier les permissions localisation/proximite.",
+                "Lancer Wi-Fi Analyzer.",
+                "Lancer Bluetooth Radar.",
+                "Comparer les observations avec l'heure et le lieu volontaire.",
+            ],
+            "expected_evidence": ["SSID/BSSID si disponible", "RSSI", "Appareils Bluetooth connus/visibles"],
+            "safety": "Observation uniquement : aucune connexion forcee, desauthentification ou appairage.",
+        },
+        {
+            "id": "public-exposure-check",
+            "name": "Ressource publique exposee",
+            "scope": "URL, dossier ou partage explicitement fourni",
+            "objective": "Verifier ce qui est lisible sans contournement et le transformer en observation.",
+            "tools": ["Public Exposure Viewer", "Reports", "Timeline"],
+            "steps": [
+                "Saisir uniquement une ressource autorisee.",
+                "Inspecter les metadonnees et ressources visibles.",
+                "Ajouter les constats a la timeline.",
+                "Compiler un rapport de restitution.",
+            ],
+            "expected_evidence": ["Liste publique", "Metadonnees", "Recommandations"],
+            "safety": "Pas de brute force, fuzzing, crawling profond ou aspiration massive.",
+        },
+        {
+            "id": "traffic-reading-lab",
+            "name": "Lecture trafic pedagogique",
+            "scope": "Logs fournis ou demo locale",
+            "objective": "Lire des flux comme un mini Wireshark sans capture active.",
+            "tools": ["Packet Observer", "Timeline", "Reports"],
+            "steps": [
+                "Coller des lignes de trafic ou utiliser la demo.",
+                "Identifier protocoles, sens et flags TCP.",
+                "Transformer les resumes humains en observations.",
+                "Documenter les limites, notamment HTTPS.",
+            ],
+            "expected_evidence": ["Protocoles", "Flags TCP", "Timeline humaine"],
+            "safety": "Pas de capture interface, pas de dechiffrement HTTPS.",
+        },
+        {
+            "id": "qr-nfc-awareness",
+            "name": "QR/NFC awareness lab",
+            "scope": "Payloads pedagogiques et tags autorises",
+            "objective": "Comprendre les contenus scannables et leurs risques avant ouverture.",
+            "tools": ["QR Code", "NFC Tools", "Hash / Crypto"],
+            "steps": [
+                "Generer un QR URL de demonstration.",
+                "Decoder un QR Wi-Fi ou NDEF hex de lab.",
+                "Comparer encodage, hash et chiffrement demo.",
+                "Ajouter une note de recommandation au rapport.",
+            ],
+            "expected_evidence": ["Contenu decode", "Niveau de risque URL", "Lecon securite"],
+            "safety": "Payload inoffensif uniquement, aucun tag tiers non autorise.",
+        },
+    ]
+
+
+def create_mission_from_template(template_id: str) -> Path:
+    templates = {str(item["id"]): item for item in mission_templates()}
+    template = templates.get(template_id)
+    if template is None:
+        raise ValueError("Template de mission inconnu.")
+    mission = Mission(
+        name=str(template["name"]),
+        scope=str(template["scope"]),
+        authorization="Mission pedagogique locale ou explicitement autorisee.",
+        observations=[
+            "Objectif: " + str(template["objective"]),
+            "Outils: " + ", ".join(str(item) for item in template["tools"]),
+            "Limite: " + str(template["safety"]),
+        ],
+        recommendations=[str(item) for item in template["steps"]],
+    )
+    return mission.save()
+
+
 def list_missions() -> list[Path]:
     if not MISSIONS_DIR.exists():
         return []
