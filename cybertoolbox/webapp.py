@@ -149,9 +149,10 @@ color:var(--muted);border-left:2px solid transparent;white-space:nowrap;overflow
 nav a:hover{color:var(--text);
 border-color:var(--signal);background:rgba(121,255,61,.08)}main{min-width:0;
 padding:72px clamp(18px,4vw,54px) 60px;transition:padding-left .25s ease}.shell:not(.nav-collapsed) main{
-padding-left:calc(286px + clamp(18px,4vw,54px))}.topline{display:flex;justify-content:
-space-between;gap:16px;align-items:baseline;border-bottom:1px solid var(--line);
-margin-bottom:28px;padding-left:0;min-height:44px}h1{margin:0 0 12px;font-size:clamp(24px,4vw,42px);
+padding-left:calc(286px + clamp(18px,4vw,54px))}.topline{display:grid;grid-template-columns:1fr auto;
+gap:16px;align-items:start;border-bottom:1px solid var(--line);
+margin-bottom:16px;padding-left:0;min-height:44px}.title-actions{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.title-copy{min-width:0}.auth-label{padding-top:4px}h1{margin:0 0 12px;font-size:clamp(24px,4vw,42px);
 letter-spacing:-.04em}h1:before{content:"// ";color:var(--signal)}h2{color:
 var(--signal);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
 .eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:11px}.grid{display:
@@ -200,8 +201,7 @@ input[type=checkbox]{width:auto;accent-color:var(--signal)}.check{display:flex;
 align-items:flex-start;gap:9px}.notice{padding:13px 15px;border-left:3px solid
 var(--signal);background:var(--panel);backdrop-filter:blur(18px) saturate(130%);margin-bottom:16px}.error{border-color:
 var(--danger);color:#ffdce1}.table-wrap{width:100%;overflow-x:auto}
-.page-actions{position:sticky;top:0;z-index:30;display:flex;gap:10px;align-items:center;
-margin:-52px 0 18px;padding:10px 0;background:linear-gradient(to bottom,var(--bg),transparent)}
+.page-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .page-actions a,.page-actions button{min-width:44px;min-height:40px;padding:8px 12px;border-radius:999px;
 clip-path:none}.page-actions .home-link{background:var(--signal);color:#03100a}.page-actions .back-button{
 background:var(--panel);color:var(--text);border-color:var(--line)}
@@ -244,7 +244,7 @@ box-shadow:0 0 12px var(--signal)}
 background:var(--panel);backdrop-filter:blur(22px) saturate(140%);display:grid;align-content:space-between;gap:8px}
 .dash-metric span{color:var(--muted);font-size:12px}.dash-metric strong{color:var(--accent);font-size:26px;line-height:1}
 .dash-metric small{color:var(--muted);font-size:11px}.dashboard-hero{grid-column:1/-1}
-.dashboard-actions,.dashboard-config{grid-column:span 4}.dashboard-activity{grid-column:span 6}.dashboard-modules{grid-column:span 8}
+.dashboard-actions,.dashboard-activity,.dashboard-config{grid-column:span 4}.dashboard-modules{grid-column:span 8}
 .dashboard-actions{align-content:start}.dashboard-action-list{display:grid;gap:10px}.dashboard-action{
 display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);
 border-radius:12px;background:rgba(var(--panel-rgb),.38);text-decoration:none;color:var(--text)}
@@ -433,8 +433,8 @@ body[data-app-mode="light"] .quick-toggle span,body[data-app-mode="light"] .app 
 body[data-app-mode="light"] .quick-toggle strong,body[data-app-mode="light"] .app strong{color:#0f172a}
 .brand{margin-bottom:14px}
 nav{display:grid}.card,.card.wide{grid-column:span 6}}
-@media(max-width:600px){main{padding:76px 12px 40px}.topline{padding-left:0;gap:10px}.card,.card.wide,.card.full{
-grid-column:1/-1}.topline{display:block}.table-wrap{overflow-x:auto}
+@media(max-width:600px){main{padding:76px 12px 40px}.topline{padding-left:0;gap:10px;grid-template-columns:1fr}.card,.card.wide,.card.full{
+grid-column:1/-1}.table-wrap{overflow-x:auto}
 .sidebar{padding:14px}.brand{margin-bottom:14px}.app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 .app{min-height:118px;padding:8px}.app:before,.quick-icon{width:56px;height:56px;font-size:12px}
 .quick-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.quick-toggle{padding:8px}
@@ -443,7 +443,7 @@ grid-column:1/-1}.topline{display:block}.table-wrap{overflow-x:auto}
 .dashboard-hero,.dashboard-actions,.dashboard-activity,.dashboard-modules,.dashboard-config,
 .dash-tile.size-s,.dash-tile.size-m,.dash-tile.size-l,.dash-tile.size-xl,.dash-tile.size-tall{grid-column:1/-1}
 .dashboard-board .metric-row{grid-template-columns:1fr}
-.context-bar{position:sticky;top:0;z-index:4;font-size:12px;background:rgba(var(--panel-rgb),.96)}
+.context-bar{font-size:12px;background:rgba(var(--panel-rgb),.96)}
 .geo-tools{grid-template-columns:1fr}.geo-tool-row{grid-template-columns:1fr}.geo-map{height:56vh}
 h1{font-size:26px}.card{padding:16px}}
 """
@@ -1291,19 +1291,20 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
     night = datetime.now().hour >= 19 or datetime.now().hour < 7
     app_mode = ("dark" if night else "light") if settings.app_color_mode == "auto" else settings.app_color_mode
     map_mode = ("night" if night else "day") if settings.map_color_mode == "auto" else settings.map_color_mode
+    weather_label = "Meteo --"
     return f"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{escape(title)}</title><style>{CSS}</style></head>
 <body class="{body_class}" data-theme="{escape(settings.theme)}" data-app-mode="{app_mode}"
 data-map-mode="{map_mode}" style="--glass-alpha:{glass_alpha}">
 <div class="shell nav-collapsed" id="app-shell">
-<main><div class="page-actions"><a class="home-link" href="/" aria-label="Accueil">Accueil</a>
+<main><div class="topline"><div class="title-copy"><div class="title-actions">
+<div class="page-actions"><a class="home-link" href="/" aria-label="Accueil">Accueil</a>
 <button class="back-button icon-button" type="button" onclick="history.back()" aria-label="Retour" title="Retour">&#8592;</button></div>
-<div class="topline"><div>
-<span class="eyebrow">recon SC // interface locale autorisée</span><h1>{escape(title)}</h1></div>
-<span class="muted">LOCAL // AUTHORIZED</span></div>
+<span class="eyebrow">recon SC // interface locale autorisée</span></div><h1>{escape(title)}</h1></div>
+<span class="muted auth-label">LOCAL // AUTHORIZED</span></div>
 <div class="context-bar"><span id="live-clock">{escape(context['time'])}</span>
-<span>{escape(context['timezone'])}</span><span>{escape(context['platform'])}</span></div>
+<span>{escape(context['timezone'])}</span><span>{escape(context['platform'])}</span><span>{weather_label}</span></div>
 {body}<footer class="ownership">recon SC · Cyber Learning Toolbox © 2026 Maréchaux Willem ·
 Projet original distribué sous licence MIT · La notice de copyright doit être conservée.</footer>
 </main></div>
@@ -1620,6 +1621,34 @@ track.addEventListener("scroll",update);
 window.addEventListener("resize",update);
 }});
 }});
+window.addEventListener("DOMContentLoaded",()=>{{
+const scanButton=document.getElementById("camera-scan-qr");
+const copyButton=document.getElementById("camera-scan-copy");
+const fileInput=document.getElementById("camera-scan-file");
+const output=document.getElementById("camera-scan-output");
+const status=document.getElementById("camera-scan-status");
+if(scanButton&&fileInput&&output&&status){{
+scanButton.addEventListener("click",async event=>{{
+event.preventDefault();
+const file=fileInput.files?.[0];
+if(!file){{status.textContent="Selectionnez une image ou prenez une photo.";return;}}
+if(!("BarcodeDetector" in window)){{status.textContent="Scan QR non disponible dans ce navigateur. Essayez Chrome/Android ou importez l'image dans le lecteur QR fichier.";return;}}
+try{{
+const detector=new BarcodeDetector({{formats:["qr_code"]}});
+const bitmap=await createImageBitmap(file);
+const codes=await detector.detect(bitmap);
+output.value=codes.map(code=>code.rawValue).join("\\n");
+status.textContent=codes.length?`${{codes.length}} QR detecte(s).`:"Aucun QR detecte dans l'image.";
+}}catch(error){{status.textContent="Scan impossible : "+error.message;}}
+}});
+copyButton?.addEventListener("click",async event=>{{
+event.preventDefault();
+if(!output.value)return;
+await navigator.clipboard?.writeText(output.value);
+status.textContent="Resultat copie dans le presse-papiers.";
+}});
+}}
+}});
 const loadingSteps={{
 discover:["Validation du réseau privé autorisé","Sélection de Nmap ou du moteur portable",
 "Envoi des sondes de découverte","Collecte des hôtes ayant répondu",
@@ -1871,6 +1900,7 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
 <div class="dashboard-action-list dashboard-scroll-track" data-scroll-track>
 <a class="dashboard-action" href="/scanner"><span><strong>Scanner cible</strong><br>Choisir une ou plusieurs sources</span><b>Ouvrir</b></a>
 <a class="dashboard-action" href="/scanner?source_discover=1&source_ports=1&source_wifi=1&source_bluetooth=1&source_http=1"><span><strong>Recon complete</strong><br>Preset de collecte locale</span><b>Lancer</b></a>
+<a class="dashboard-action" href="/tools#camera-scan"><span><strong>Scan camera</strong><br>QR, image et preparation OCR</span><b>Ouvrir</b></a>
 <a class="dashboard-action" href="/tools"><span><strong>Packet Observer</strong><br>Lire DNS, TCP, ARP et logs</span><b>Ouvrir</b></a>
 <a class="dashboard-action" href="/reports"><span><strong>Rapports</strong><br>Timeline, artefacts, correlations</span><b>Voir</b></a>
 </div><button class="dashboard-scroll-nav right" type="button" data-scroll-dir="1">&#8595;</button></div></article>
@@ -2730,6 +2760,16 @@ placeholder="https://example.org ou note de mission"></textarea></label>
 <label>Decoder un contenu Wi-Fi<textarea name="value" rows="2"
 placeholder="WIFI:T:WPA;S:Classe;P:secret;;"></textarea></label>
 <button type="submit">DECODER WIFI</button></form></section>
+<section class="card full" id="camera-scan"><span class="eyebrow">Scan camera</span>
+<h2>Scanner image, QR ou texte</h2><p class="muted">Utilise le materiel camera du navigateur quand il est disponible.
+Le scan QR reste local. L'OCR texte sera branche ensuite avec un moteur dedie.</p>
+<div class="recon-fields"><label>Image ou camera<input id="camera-scan-file" type="file"
+accept="image/*" capture="environment"></label><label>Resultat<textarea id="camera-scan-output"
+rows="5" placeholder="Le contenu QR ou le texte extrait apparaitra ici."></textarea></label></div>
+<div class="action-row"><button type="button" id="camera-scan-qr">SCANNER QR</button>
+<button type="button" id="camera-scan-copy">COPIER</button></div>
+<div class="notice" id="camera-scan-status">Sur mobile, le champ image peut ouvrir directement la camera.</div>
+</section>
 <section class="card full"><span class="eyebrow">NFC Tools</span>
 <h2>Lire, ecrire ou decoder un tag</h2><p class="muted">Lecture locale si le materiel le permet,
 ecriture simple texte/URL/mission, parsing NDEF de lab et historique. Aucune emulation de badge.</p>
