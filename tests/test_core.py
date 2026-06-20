@@ -217,7 +217,29 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("<svg", topology)
         self.assertIn("RESEAU", topology)
         self.assertIn('action="/topology"', topology)
+        self.assertIn("Aucun scan topologie", topology)
+        self.assertNotIn("192.168.1.10", topology)
         self.assertIn("recon SC", pwa_manifest())
+
+    def test_topology_render_uses_session_scan_data(self):
+        topology = render_topology(
+            {
+                "network": "192.168.50.0/24",
+                "gateway": "192.168.50.1",
+                "updated_at": "2026-06-21T12:00:00",
+                "assets": {
+                    "192.168.50.20": {
+                        "hostname": "camera-lab",
+                        "services": [],
+                        "findings": [],
+                        "protocols": ["ICMP"],
+                    }
+                },
+            }
+        )
+        self.assertIn("camera-lab", topology)
+        self.assertIn("192.168.50.20", topology)
+        self.assertIn("topology-device-0", topology)
 
     def test_gui_file_analysis_stays_inside_workspace(self):
         self.assertEqual(_workspace_path("README.md").name, "README.md")

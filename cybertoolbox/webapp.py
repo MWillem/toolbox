@@ -190,11 +190,18 @@ clip-path:none;min-height:0;cursor:pointer}.context-weather:hover{background:tra
 .map{width:100%;min-height:430px;border:1px solid var(--line);background:#09090b}
 .node{fill:#18181c;stroke:var(--accent);stroke-width:2}.node-risk{stroke:var(--orange)}
 .edge{stroke:#5c5c62;stroke-width:1}.map-label{fill:#eee;font-size:12px}
-.topology-action{display:block;width:124px;height:124px}
-.topology-action button{width:124px;height:124px;border-radius:50%;clip-path:none;padding:0;
+.topology-action{position:relative;display:grid;place-items:center;width:220px;height:160px}
+.topology-action button,.topology-action .topology-main{width:124px;height:124px;border-radius:50%;clip-path:none;padding:0;
 display:grid;place-items:center;text-align:center;line-height:1.15;background:rgba(var(--panel-rgb),.9);
 color:var(--signal);border:3px solid var(--signal);box-shadow:0 0 26px var(--glow),inset 0 0 24px rgba(121,255,61,.08)}
+.topology-action small{display:block;color:var(--muted);font-size:8px;line-height:1.15;margin-top:4px}
 .topology-action button:hover{background:var(--signal);color:#03100a}
+.topology-menu{position:absolute;right:0;top:18px;display:grid;gap:6px;opacity:0;pointer-events:none;transition:.18s ease}
+.topology-action:hover .topology-menu,.topology-action:focus-within .topology-menu{opacity:1;pointer-events:auto}
+.topology-menu button,.topology-menu a{width:74px;height:auto;min-height:28px;border-radius:999px;clip-path:none;
+padding:5px 8px;font-size:10px;background:var(--panel);color:var(--text);border:1px solid var(--line)}
+.topology-detail{display:none;position:fixed;inset:0;z-index:90;place-items:center;padding:18px;background:rgba(0,0,0,.5);backdrop-filter:blur(12px)}
+.topology-detail:target{display:grid}.topology-detail .card{width:min(680px,100%);grid-column:auto}
 .badge{display:inline-block;padding:3px 7px;border:1px solid var(--line);background:var(--panel);
 backdrop-filter:blur(14px) saturate(130%);font-size:11px}
 .menu-toggle{position:fixed;left:22px;top:18px;z-index:40;width:44px;height:40px;padding:0;
@@ -1258,16 +1265,29 @@ def _workspace_path(value: str) -> Path:
     return candidate
 
 
-def render_topology() -> str:
-    assets = list(_topology_assets().items())
+def render_topology(topology: dict[str, Any] | None = None) -> str:
+    topology = topology or {}
+    raw_assets = topology.get("assets", {})
+    assets = list(raw_assets.items()) if isinstance(raw_assets, dict) else []
+    network = str(topology.get("network") or local_ipv4_network() or "reseau inconnu")
+    gateway = str(topology.get("gateway") or _gateway_guess(network) or "passerelle inconnue")
+    updated_at = str(topology.get("updated_at") or "aucun scan")
     width, height = 900, 460
     center_x, center_y = width // 2, height // 2
     elements = [
         f'<svg class="map" viewBox="0 0 {width} {height}" role="img" '
         'aria-label="Carte tactique des actifs autorisés">',
-        f'<foreignObject x="{center_x - 62}" y="{center_y - 62}" width="124" height="124">'
-        '<form xmlns="http://www.w3.org/1999/xhtml" class="topology-action" method="post" action="/topology">'
-        '<button type="submit">RESEAU<br/>IP</button></form></foreignObject>',
+        f'<foreignObject x="{center_x - 110}" y="{center_y - 80}" width="220" height="160">'
+        '<div xmlns="http://www.w3.org/1999/xhtml" class="topology-action">'
+        '<form method="post" action="/topology"><input type="hidden" name="operation" value="scan">'
+        f'<button type="submit">RESEAU<br/>IP<small>{escape(network)}<br>{escape(gateway)}</small></button></form>'
+        '<div class="topology-menu">'
+        '<form method="post" action="/topology"><input type="hidden" name="operation" value="scan">'
+        '<button type="submit">Scan</button></form>'
+        '<a href="#topology-router">Routeur</a>'
+        '<form method="post" action="/topology"><input type="hidden" name="operation" value="report">'
+        '<button type="submit">Rapport</button></form>'
+        '</div></div></foreignObject>',
     ]
     count = max(1, len(assets))
     import math
@@ -1280,34 +1300,59 @@ def render_topology() -> str:
         line_start_y = center_y + math.sin(angle) * 68
         line_end_x = x - math.cos(angle) * 44
         line_end_y = y - math.sin(angle) * 44
-        risk = bool(asset["findings"])
+        risk = bool(asset.get("findings"))
+        modal_id = f"topology-device-{index}"
         elements.append(
             f'<line class="edge" x1="{line_start_x:.0f}" y1="{line_start_y:.0f}" '
             f'x2="{line_end_x:.0f}" y2="{line_end_y:.0f}"/>'
         )
-        elements.append(
-            f'<circle class="node{" node-risk" if risk else ""}" cx="{x:.0f}" cy="{y:.0f}" r="38"/>'
-        )
+        elements.append(f'<a href="#{modal_id}">')
+        elements.append(f'<circle class="node{" node-risk" if risk else ""}" cx="{x:.0f}" cy="{y:.0f}" r="38"/>')
         elements.append(
             f'<text class="map-label" x="{x:.0f}" y="{y - 48:.0f}" text-anchor="middle">'
-            f'{escape(address)}</text>'
+            f'{escape(str(asset.get("hostname") or address))}</text>'
         )
         elements.append(
             f'<text class="map-label" x="{x:.0f}" y="{y + 4:.0f}" text-anchor="middle">'
-            f'{len(asset["services"])} svc</text>'
+            f'{escape(address)}</text>'
         )
         if asset.get("protocols"):
             elements.append(
                 f'<text class="map-label" x="{x:.0f}" y="{y + 22:.0f}" text-anchor="middle">'
                 f'{escape(", ".join(asset["protocols"][:3]))}</text>'
             )
+        elements.append("</a>")
     if not assets:
         elements.append(
             '<text class="map-label" x="450" y="315" text-anchor="middle">'
-            "Aucun scan enregistré</text>"
+            "Aucun scan topologie lance dans cette session</text>"
         )
     elements.append("</svg>")
-    return "".join(elements)
+    details = [
+        '<div id="topology-router" class="topology-detail"><section class="card">'
+        '<h2>Reseau IP</h2>'
+        f'<p><strong>Reseau</strong><br>{escape(network)}</p>'
+        f'<p><strong>Passerelle estimee</strong><br>{escape(gateway)}</p>'
+        f'<p><strong>Derniere mise a jour</strong><br>{escape(updated_at)}</p>'
+        '<p class="muted">Les protocoles affiches aident a comprendre la nature des flux: '
+        'TCP pour les connexions applicatives, ARP pour la resolution locale, ICMP pour la joignabilite.</p>'
+        '<a class="button" href="#">FERMER</a></section></div>'
+    ]
+    for index, (address, asset) in enumerate(assets):
+        protocols = ", ".join(asset.get("protocols", [])) or "Non observe"
+        services = asset.get("services", [])
+        hostname = str(asset.get("hostname") or "-")
+        details.append(
+            f'<div id="topology-device-{index}" class="topology-detail"><section class="card">'
+            f'<h2>{escape(address)}</h2>'
+            f'<p><strong>Nom reseau</strong><br>{escape(hostname)}</p>'
+            f'<p><strong>Services</strong><br>{len(services)} service(s). '
+            'Un service est une porte applicative connue ou observee sur un appareil.</p>'
+            f'<p><strong>Protocoles</strong><br>{escape(protocols)}. '
+            'Cette information aide a comprendre la nature des echanges dans la topologie.</p>'
+            f'{_value(asset)}<a class="button" href="#">FERMER</a></section></div>'
+        )
+    return "".join(elements + details)
 
 
 def _topology_assets() -> dict[str, dict[str, Any]]:
@@ -1385,6 +1430,44 @@ def _is_private_address(value: str) -> bool:
     return address.is_private or address.is_loopback or address.is_link_local
 
 
+def _gateway_guess(network_value: str) -> str:
+    try:
+        network = ipaddress.ip_network(network_value, strict=False)
+    except ValueError:
+        return ""
+    if not isinstance(network, ipaddress.IPv4Network):
+        return ""
+    hosts = network.hosts()
+    try:
+        return str(next(hosts))
+    except StopIteration:
+        return ""
+
+
+def _topology_from_discovery(network: str, engine: str, results: list[dict[str, str]]) -> dict[str, Any]:
+    assets: dict[str, dict[str, Any]] = {}
+    for item in results:
+        address = str(item.get("address") or item.get("ip") or "").strip()
+        if not address:
+            continue
+        hostname = str(item.get("hostname") or item.get("name") or "").strip()
+        assets[address] = {
+            "hostname": "" if hostname == "-" else hostname,
+            "services": [],
+            "findings": [],
+            "protocols": ["ICMP"],
+            "source": engine,
+            "raw": item,
+        }
+    return {
+        "network": network,
+        "gateway": _gateway_guess(network),
+        "engine": engine,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "assets": assets,
+    }
+
+
 def pwa_manifest() -> str:
     return json.dumps(
         {
@@ -1446,6 +1529,7 @@ class WebState:
         self.result_title = ""
         self.result_route = ""
         self.recon_form: dict[str, str | bool] = {}
+        self.topology: dict[str, Any] = {}
         self.message = ""
         self.error = ""
 
@@ -1853,6 +1937,28 @@ document.getElementById("map-layer")?.addEventListener("change",redrawGeoMap);
 document.getElementById("map-zoom")?.addEventListener("change",redrawGeoMap);
 }});
 window.addEventListener("DOMContentLoaded",()=>{{
+const auto=document.getElementById("topology-auto-refresh");
+const delay=document.getElementById("topology-auto-delay");
+if(!auto||!delay)return;
+let timer=null;
+const submitScan=()=>{{
+const form=document.createElement("form");
+form.method="post";form.action="/topology";
+const input=document.createElement("input");
+input.type="hidden";input.name="operation";input.value="scan";
+form.appendChild(input);document.body.appendChild(form);form.submit();
+}};
+const sync=()=>{{
+localStorage.setItem("topologyAutoRefresh",auto.checked?"1":"0");
+localStorage.setItem("topologyAutoDelay",delay.value);
+if(timer)clearInterval(timer);
+if(auto.checked)timer=setInterval(submitScan,Math.max(30,Number(delay.value)||60)*1000);
+}};
+auto.checked=localStorage.getItem("topologyAutoRefresh")==="1";
+delay.value=localStorage.getItem("topologyAutoDelay")||delay.value;
+auto.addEventListener("change",sync);delay.addEventListener("change",sync);sync();
+}});
+window.addEventListener("DOMContentLoaded",()=>{{
 document.querySelectorAll("[data-scroll-panel]").forEach(panel=>{{
 const track=panel.querySelector("[data-scroll-track]");
 if(!track)return;
@@ -2050,7 +2156,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/context": lambda: self._run_context(data),
             "/tools": lambda: self._run_tools(data),
             "/data": lambda: self._run_data(data),
-            "/topology": self._run_topology,
+            "/topology": lambda: self._run_topology(data),
             "/settings": lambda: self._save_settings(data),
         }
         handler = handlers.get(route_path)
@@ -2886,12 +2992,39 @@ placeholder="http://192.168.1.20/public/ ou \\\\serveur\\partage"></label>
             self.state.error = str(exc)
         self._redirect("/exposure")
 
-    def _run_topology(self) -> None:
+    def _run_topology(self, data: dict[str, list[str]]) -> None:
         self._clear()
         try:
+            operation = _field(data, "operation", "scan")
+            if operation == "report":
+                if not self.state.topology:
+                    raise ValueError("Lancez d'abord une topologie avant de creer un rapport.")
+                assets = self.state.topology.get("assets", {})
+                path = save_professional_report(
+                    "Topologie reseau",
+                    str(self.state.topology.get("network", "reseau local")),
+                    f"Vue topologique de {len(assets) if isinstance(assets, dict) else 0} appareil(s) observes.",
+                    [
+                        {
+                            "title": str(address),
+                            "severity": "information",
+                            "evidence": str(asset),
+                            "impact": "Observation de cartographie locale.",
+                        }
+                        for address, asset in (assets.items() if isinstance(assets, dict) else [])
+                    ],
+                    ["Relancer la topologie avant une restitution finale.", "Verifier les services exposes avec les outils autorises."],
+                    "Vue generee depuis une session locale autorisee, sans localisation physique.",
+                )
+                self.state.message = f"Rapport topologie cree : {path.name}"
+                self._redirect("/map?tab=network")
+                return
             settings = load_settings()
             network = local_ipv4_network()
+            if not network:
+                raise ValueError("Aucun reseau IPv4 prive detecte pour la topologie.")
             results, engine = discover_hosts(network, settings.prefer_nmap)
+            self.state.topology = _topology_from_discovery(network, engine, results)
             saved = save_recon_records(
                 {"network": {"title": "Topologie reseau", "engine": engine, "items": results}},
                 subject=network,
@@ -2971,7 +3104,12 @@ rel="noreferrer">OpenTopoMap</a>. CARTO :
 <a href="https://carto.com/attributions" target="_blank"
 rel="noreferrer">attributions</a>. Les modes Hologramme et SOC sont des rendus
 locaux au-dessus des tuiles OSM.</p></div>
-<div class="tab-panel{network_active}" data-panel="network">{render_topology()}
+<div class="tab-panel{network_active}" data-panel="network">
+<div class="notice">La topologie affiche uniquement le resultat de cette session. Cliquez sur le cercle Reseau IP pour lancer ou forcer une mise a jour.</div>
+<div class="filter-row"><label class="check"><input id="topology-auto-refresh" type="checkbox"> Mise a jour automatique</label>
+<label>Delai<select id="topology-auto-delay"><option value="30">30 s</option><option value="60" selected>60 s</option>
+<option value="120">2 min</option><option value="300">5 min</option></select></label></div>
+{render_topology(self.state.topology)}
 <p class="muted">Vert : actif observé. Orange : service à vérifier. Cette vue
 est une topologie technique schématique, sans localisation physique.</p></div>
 </section></div>"""
