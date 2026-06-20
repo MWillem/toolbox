@@ -346,6 +346,15 @@ border:1px solid var(--line);background:#0a0a0d}
 .map-ui{position:absolute;right:12px;top:12px;z-index:8;display:grid;gap:6px}
 .map-ui button{width:38px;height:38px;padding:0;display:grid;place-items:center}
 .map-night .map-tile{filter:invert(1) hue-rotate(175deg) saturate(.75) brightness(.72) contrast(1.05)}
+.map-style-dark .map-tile{filter:contrast(1.08) saturate(.82) brightness(.72)}
+.map-style-cyber .map-tile{filter:invert(.92) hue-rotate(155deg) saturate(1.35) brightness(.7) contrast(1.18)}
+.map-style-soc .map-tile{filter:invert(1) hue-rotate(185deg) saturate(.35) brightness(.55) contrast(1.35)}
+.map-style-soc::after,.map-style-cyber::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:3;
+background:linear-gradient(90deg,rgba(124,255,107,.12) 1px,transparent 1px),
+linear-gradient(rgba(34,211,238,.08) 1px,transparent 1px);background-size:42px 42px;mix-blend-mode:screen}
+.map-style-soc::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:3;
+background:radial-gradient(circle at 38% 42%,rgba(34,211,238,.22),transparent 28%),
+radial-gradient(circle at 62% 58%,rgba(168,85,247,.18),transparent 24%);opacity:.55}
 .map-route{position:absolute;inset:0;z-index:4;pointer-events:none}
 .map-route path{fill:none;stroke:var(--accent);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;
 filter:drop-shadow(0 0 5px var(--accent))}
@@ -1475,7 +1484,17 @@ const mapProviders={{
 standard:{{url:"https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
 label:"OpenStreetMap Standard",maxZoom:19}},
 topographic:{{url:"https://a.tile.opentopomap.org/{{z}}/{{x}}/{{y}}.png",
-label:"OpenTopoMap",maxZoom:17}}
+label:"OpenTopoMap",maxZoom:17}},
+cartoLight:{{url:"https://a.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}.png",
+label:"CARTO Positron",maxZoom:19}},
+cartoDark:{{url:"https://a.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}.png",
+label:"CARTO Dark Matter",maxZoom:19,effect:"map-style-dark"}},
+cartoVoyager:{{url:"https://a.basemaps.cartocdn.com/rastertiles/voyager/{{z}}/{{x}}/{{y}}.png",
+label:"CARTO Voyager",maxZoom:19}},
+hologram:{{url:"https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
+label:"Vue hologramme locale, style Tangram ES",maxZoom:19,effect:"map-style-cyber"}},
+socFlow:{{url:"https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
+label:"Vue SOC flux, style deck.gl",maxZoom:19,effect:"map-style-soc"}}
 }};
 let mapPinchDistance=0;
 let mapDrag=null;
@@ -1619,6 +1638,8 @@ marker.title=geoState.markerLat.toFixed(5)+", "+geoState.markerLon.toFixed(5);
 map.appendChild(marker);
 }}
 map.classList.toggle("map-night",document.body.dataset.mapMode==="night");
+map.classList.remove("map-style-dark","map-style-cyber","map-style-soc");
+if(provider.effect)map.classList.add(provider.effect);
 drawRoute(map,x,y,zoom,width,height);
 document.getElementById("map-attribution").textContent=provider.label;
 document.getElementById("geo-map-status").textContent=
@@ -2709,6 +2730,11 @@ placeholder="Latitude"><input id="map-longitude" type="number" step="any"
 placeholder="Longitude"></div><div class="geo-tool-row"><select id="map-layer" aria-label="Fond de carte">
 <option value="standard">Standard</option>
 <option value="topographic">Topographique / relief</option>
+<option value="cartoLight">CARTO clair</option>
+<option value="cartoDark">CARTO sombre</option>
+<option value="cartoVoyager">CARTO voyager</option>
+<option value="hologram">Hologramme cyber</option>
+<option value="socFlow">SOC / flux reseau</option>
 </select><select id="map-zoom" aria-label="Niveau de zoom">
 <option value="2">2</option><option value="3">3</option><option value="4">4</option>
 <option value="5">5</option><option value="6">6</option><option value="7">7</option>
@@ -2744,7 +2770,10 @@ aria-label="Carte centrée sur la position choisie"></div>
 <a href="https://www.openstreetmap.org/copyright" target="_blank"
 rel="noreferrer">contributeurs OpenStreetMap</a>. Relief :
 <a href="https://opentopomap.org/" target="_blank"
-rel="noreferrer">OpenTopoMap</a>.</p></div>
+rel="noreferrer">OpenTopoMap</a>. CARTO :
+<a href="https://carto.com/attributions" target="_blank"
+rel="noreferrer">attributions</a>. Les modes Hologramme et SOC sont des rendus
+locaux au-dessus des tuiles OSM.</p></div>
 <div class="tab-panel" data-panel="network">{render_topology()}
 <p class="muted">Vert : actif observé. Orange : service à vérifier. Cette vue
 est une topologie technique schématique, sans localisation physique.</p></div>
@@ -3227,7 +3256,7 @@ name="scan_timeout" value="{settings.scan_timeout}"></label>
             "Content-Security-Policy",
             "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
             "img-src 'self' data: https://tile.openstreetmap.org "
-            "https://*.tile.opentopomap.org; "
+            "https://*.tile.opentopomap.org https://*.basemaps.cartocdn.com; "
             "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org; "
             "frame-src https://www.openstreetmap.org",
         )
