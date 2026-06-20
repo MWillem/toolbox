@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict
 from html import escape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import ipaddress
+import json
 from pathlib import Path
 import secrets
 import socket
@@ -1252,8 +1254,7 @@ def _workspace_path(value: str) -> Path:
 
 
 def render_topology() -> str:
-    inventory = exposure_inventory()
-    assets = list(inventory["assets"].items())
+    assets = list(_topology_assets().items())
     width, height = 900, 460
     center_x, center_y = width // 2, height // 2
     elements = [
@@ -1284,6 +1285,11 @@ def render_topology() -> str:
             f'<text class="map-label" x="{x:.0f}" y="{y + 4:.0f}" text-anchor="middle">'
             f'{len(asset["services"])} svc</text>'
         )
+        if asset.get("protocols"):
+            elements.append(
+                f'<text class="map-label" x="{x:.0f}" y="{y + 22:.0f}" text-anchor="middle">'
+                f'{escape(", ".join(asset["protocols"][:3]))}</text>'
+            )
     if not assets:
         elements.append(
             '<text class="map-label" x="450" y="315" text-anchor="middle">'
@@ -1293,10 +1299,138 @@ def render_topology() -> str:
     return "".join(elements)
 
 
+def _topology_assets() -> dict[str, dict[str, Any]]:
+    inventory = exposure_inventory()
+    assets: dict[str, dict[str, Any]] = {}
+    for address, asset in inventory.get("assets", {}).items():
+        assets[str(address)] = {
+            "label": asset.get("label", address),
+            "services": list(asset.get("services", [])),
+            "findings": list(asset.get("findings", [])),
+            "protocols": [],
+        }
+    for path in list_records("artifact"):
+        try:
+            payload = load_record(path)
+        except (ValueError, OSError, json.JSONDecodeError):
+            continue
+        kind = str(payload.get("kind", ""))
+        data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
+        value = str(payload.get("value", "")).strip()
+        if kind == "device":
+            address = _first_text(data, "address", "ip", "host") or value
+            if address:
+                _topology_asset(assets, address, payload.get("title", address))
+        elif kind == "service":
+            address = _first_text(data, "address", "ip", "host")
+            if address:
+                current = _topology_asset(assets, address, address)
+                current["services"].append(data)
+                if str(payload.get("risk", "info")) != "info":
+                    current["findings"].append(
+                        {"severity": payload.get("risk"), "message": payload.get("summary", "")}
+                    )
+        elif kind == "packet_observation":
+            packets = data.get("packets", [])
+            for packet in packets if isinstance(packets, list) else []:
+                if not isinstance(packet, dict):
+                    continue
+                source = _first_text(packet, "source_ip", "source")
+                destination = _first_text(packet, "destination_ip", "destination")
+                protocol = _first_text(packet, "protocol")
+                for address in (source, destination):
+                    if not address:
+                        continue
+                    current = _topology_asset(assets, address, address)
+                    if protocol and protocol not in current["protocols"]:
+                        current["protocols"].append(protocol)
+                    if not _is_private_address(address):
+                        current["findings"].append(
+                            {"severity": "info", "message": "Destination externe observee"}
+                        )
+    return dict(sorted(assets.items(), key=lambda item: (not _is_private_address(item[0]), item[0])))
+
+
+def _topology_asset(assets: dict[str, dict[str, Any]], address: str, label: object) -> dict[str, Any]:
+    return assets.setdefault(
+        address,
+        {"label": str(label or address), "services": [], "findings": [], "protocols": []},
+    )
+
+
+def _first_text(item: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = item.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _is_private_address(value: str) -> bool:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return address.is_private or address.is_loopback or address.is_link_local
+
+
+def pwa_manifest() -> str:
+    return json.dumps(
+        {
+            "name": "recon SC",
+            "short_name": "recon SC",
+            "description": "Interface locale autorisee pour observer, profiler et correler.",
+            "start_url": "/",
+            "scope": "/",
+            "display": "standalone",
+            "background_color": "#030609",
+            "theme_color": "#79ff3d",
+            "orientation": "any",
+            "icons": [
+                {"src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+            ],
+            "shortcuts": [
+                {"name": "Scanner", "url": "/scanner", "description": "Ouvrir la reconnaissance locale"},
+                {"name": "Carte", "url": "/map", "description": "Ouvrir cartographie et topologie"},
+                {"name": "Rapports", "url": "/reports", "description": "Ouvrir rapports et timeline"},
+            ],
+        },
+        ensure_ascii=False,
+    )
+
+
+def pwa_icon() -> str:
+    return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<rect width="512" height="512" rx="96" fill="#030609"/>
+<path d="M72 98h368v316H72z" fill="none" stroke="#143b24" stroke-width="10"/>
+<path d="M120 168h112v48H120zM120 248h272v28H120zM120 310h190v28H120z" fill="#79ff3d"/>
+<path d="M322 154l70 70-70 70-34-34 36-36-36-36z" fill="#38e8ff"/>
+<circle cx="384" cy="360" r="28" fill="#a855f7"/>
+</svg>"""
+
+
+def service_worker() -> str:
+    return """const CACHE_NAME = "recon-sc-shell-v1";
+const APP_SHELL = ["/", "/manifest.webmanifest", "/app-icon.svg"];
+self.addEventListener("install", event => {
+  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
+  self.skipWaiting();
+});
+self.addEventListener("activate", event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))));
+  self.clients.claim();
+});
+self.addEventListener("fetch", event => {
+  if (event.request.method !== "GET") return;
+  event.respondWith(fetch(event.request).catch(() => caches.match(event.request).then(response => response || caches.match("/"))));
+});"""
+
+
 class WebState:
     def __init__(self) -> None:
         self.token = secrets.token_urlsafe(32)
         self.accepted = False
+        self.scope_authorized = False
         self.result: dict[str, Any] | None = None
         self.result_title = ""
         self.result_route = ""
@@ -1310,6 +1444,9 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
         return (
             '<!doctype html><html lang="fr"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<link rel="manifest" href="/manifest.webmanifest">'
+            '<link rel="icon" href="/app-icon.svg" type="image/svg+xml">'
+            '<meta name="theme-color" content="#79ff3d">'
             f"<title>{escape(title)}</title><style>{CSS}</style></head>"
             f'<body><main class="hero">{body}</main></body></html>'
         )
@@ -1323,6 +1460,10 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
     weather_label = "Meteo --"
     return f"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/app-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/app-icon.svg">
+<meta name="theme-color" content="#79ff3d">
 <title>{escape(title)}</title><style>{CSS}</style></head>
 <body class="{body_class}" data-theme="{escape(settings.theme)}" data-app-mode="{app_mode}"
 data-map-mode="{map_mode}" style="--glass-alpha:{glass_alpha}">
@@ -1423,6 +1564,9 @@ document.querySelectorAll(".app").forEach(item=>{{
 const label=item.querySelector("strong")?.textContent?.trim().toLowerCase()||"";
 item.dataset.icon=appIcons[label]||label.slice(0,3).toUpperCase()||"GO";
 }});
+if("serviceWorker" in navigator){{
+navigator.serviceWorker.register("/service-worker.js").catch(()=>{{}});
+}}
 document.querySelectorAll("[data-tabs]").forEach(group=>{{
 const buttons=group.querySelectorAll("[data-tab]");
 const panels=group.querySelectorAll("[data-panel]");
@@ -1821,6 +1965,15 @@ class ToolboxHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         route = urlparse(self.path)
+        if route.path == "/manifest.webmanifest":
+            self._send_asset(pwa_manifest(), "application/manifest+json")
+            return
+        if route.path == "/app-icon.svg":
+            self._send_asset(pwa_icon(), "image/svg+xml")
+            return
+        if route.path == "/service-worker.js":
+            self._send_asset(service_worker(), "text/javascript")
+            return
         if not self.state.accepted and route.path != "/":
             self._redirect("/")
             return
@@ -2136,7 +2289,7 @@ dans le terminal avec <code>run.bat watchdog</code>.</p></section></div>"""
             "source_wifi": True,
             "source_bluetooth": False,
             "source_http": False,
-            "authorized": False,
+            "authorized": self.state.scope_authorized,
             "subject": "",
             "network": default_network,
             "target": "",
@@ -2144,6 +2297,8 @@ dans le terminal avec <code>run.bat watchdog</code>.</p></section></div>"""
             "view": "category",
             **self.state.recon_form,
         }
+        if self.state.scope_authorized:
+            form_state["authorized"] = True
 
         def checked(name: str) -> str:
             return " checked" if form_state.get(name) else ""
@@ -2166,8 +2321,9 @@ dans le terminal avec <code>run.bat watchdog</code>.</p></section></div>"""
 <option value="list"{selected("list")}>Liste avec actions</option>
 </select></label>"""
         consent = (
-            f'<label class="check"><input type="checkbox" name="authorized" required{checked("authorized")}>'
-            "Je confirme disposer de l'autorisation sur ce perimetre.</label>"
+            f'<label class="check"><input type="checkbox" name="authorized"{checked("authorized")}>'
+            "Je confirme disposer de l'autorisation sur ce perimetre. "
+            "Ce choix reste actif pendant la session locale.</label>"
         )
         body = f"""<div class="grid"><section class="card full"><span class="eyebrow">Scanner</span>
 <h2>Recon autorisee</h2><p class="muted">Choisissez un ou plusieurs modules. Les champs utiles apparaissent ensuite,
@@ -2222,7 +2378,10 @@ puis le resultat s'ouvre dans une fenetre. La conservation des donnees se decide
                 "ports": _field(data, "ports", settings.default_ports),
                 "view": _field(data, "view", "category"),
             }
-            if not _checked(data, "authorized"):
+            authorized = _checked(data, "authorized") or self.state.scope_authorized
+            if _checked(data, "authorized"):
+                self.state.scope_authorized = True
+            if not authorized:
                 raise ValueError("L'autorisation explicite est obligatoire.")
             subject = _field(data, "subject")
             network_subject = _field(data, "network") or subject
@@ -3260,6 +3419,16 @@ name="scan_timeout" value="{settings.scan_timeout}"></label>
             "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org; "
             "frame-src https://www.openstreetmap.org",
         )
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _send_asset(self, content: str, content_type: str, status: int = 200) -> None:
+        payload = content.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.wfile.write(payload)
 

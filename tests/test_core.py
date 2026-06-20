@@ -83,7 +83,15 @@ from cybertoolbox.watchdog import (
     answer_matches,
     contains_expected_indicators,
 )
-from cybertoolbox.webapp import _nfc_payload, _qr_payload, _value, _workspace_path, render_layout, render_topology
+from cybertoolbox.webapp import (
+    _nfc_payload,
+    _qr_payload,
+    _value,
+    _workspace_path,
+    pwa_manifest,
+    render_layout,
+    render_topology,
+)
 from cybertoolbox.cli import interactive_menu, print_menu_item, responsive_banner
 from cybertoolbox.context_info import local_context
 from cybertoolbox.enrich_profile import calculate_digital_shadow_score
@@ -117,6 +125,8 @@ class SafetyTests(unittest.TestCase):
         self.assertIn('data-theme="', page)
         self.assertIn('data-app-mode="', page)
         self.assertIn('data-map-mode="', page)
+        self.assertIn('rel="manifest"', page)
+        self.assertIn("/service-worker.js", page)
         self.assertIn("Maréchaux Willem", page)
         self.assertIn("recon SC", page)
         self.assertIn("Accueil", page)
@@ -206,6 +216,7 @@ class SafetyTests(unittest.TestCase):
         topology = render_topology()
         self.assertIn("<svg", topology)
         self.assertIn("TOOLBOX", topology)
+        self.assertIn("recon SC", pwa_manifest())
 
     def test_gui_file_analysis_stays_inside_workspace(self):
         self.assertEqual(_workspace_path("README.md").name, "README.md")
