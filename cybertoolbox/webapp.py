@@ -229,7 +229,7 @@ background:rgba(0,0,0,.46);backdrop-filter:blur(12px)}
 gap:14px;align-content:start;width:min(100%,1260px);justify-self:center}
 .dash-tile{position:relative;display:grid;gap:8px;min-height:104px;padding:14px;border:1px solid var(--line);
 border-radius:var(--radius);background:var(--panel);backdrop-filter:blur(24px) saturate(145%);
-color:var(--text);box-shadow:0 14px 34px rgba(0,0,0,.24);overflow:hidden}
+color:var(--text);box-shadow:0 14px 34px rgba(0,0,0,.24);overflow:hidden;align-self:start}
 .dash-tile:before{content:"";position:absolute;right:0;top:0;width:60px;height:1px;background:var(--signal);
 box-shadow:0 0 12px var(--signal)}
 .dash-tile.size-s{grid-column:span 1}.dash-tile.size-m{grid-column:span 2}.dash-tile.size-l{grid-column:span 3}
@@ -243,12 +243,28 @@ box-shadow:0 0 12px var(--signal)}
 .dash-metric{min-height:92px;padding:14px;border:1px solid var(--line);border-radius:var(--radius);
 background:var(--panel);backdrop-filter:blur(22px) saturate(140%);display:grid;align-content:space-between;gap:8px}
 .dash-metric span{color:var(--muted);font-size:12px}.dash-metric strong{color:var(--accent);font-size:26px;line-height:1}
-.dash-metric small{color:var(--muted);font-size:11px}.dashboard-hero{grid-column:span 8;min-height:270px}
+.dash-metric small{color:var(--muted);font-size:11px}.dashboard-hero{grid-column:1/-1}
 .dashboard-actions,.dashboard-config{grid-column:span 4}.dashboard-activity{grid-column:span 6}.dashboard-modules{grid-column:span 8}
 .dashboard-actions{align-content:start}.dashboard-action-list{display:grid;gap:10px}.dashboard-action{
 display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);
 border-radius:12px;background:rgba(var(--panel-rgb),.38);text-decoration:none;color:var(--text)}
-.dashboard-action strong{font-size:14px;color:var(--text)}.dashboard-action span{font-size:12px}.dashboard-action b{color:var(--signal)}
+.dashboard-action strong{font-size:14px;color:var(--text);white-space:nowrap}.dashboard-action span{font-size:12px;min-width:0}
+.dashboard-action b{color:var(--signal);white-space:nowrap}
+.dashboard-scroll{position:relative;min-width:0}.dashboard-scroll-track{scrollbar-width:none}
+.dashboard-scroll-track::-webkit-scrollbar{display:none}.dashboard-scroll-nav{display:none;position:absolute;top:50%;
+transform:translateY(-50%);z-index:2;width:34px;height:34px;border-radius:50%;clip-path:none;padding:0;
+place-items:center;background:rgba(var(--panel-rgb),.94);color:var(--text);border-color:var(--line);
+box-shadow:0 8px 24px rgba(0,0,0,.28)}.dashboard-scroll-nav.left{left:4px}.dashboard-scroll-nav.right{right:4px}
+.dashboard-scroll.vertical .dashboard-scroll-nav.left{top:4px;left:50%;transform:translateX(-50%)}
+.dashboard-scroll.vertical .dashboard-scroll-nav.right{top:auto;right:auto;bottom:4px;left:50%;transform:translateX(-50%)}
+.dashboard-scroll.has-overflow .dashboard-scroll-nav{display:grid}.dashboard-kill-chain{display:flex;
+gap:12px;overflow-x:auto;overscroll-behavior-x:contain;padding:8px 42px 4px 0}.dashboard-kill-chain .app{
+flex:0 0 118px;min-height:156px;padding:10px}.dashboard-kill-chain .app strong{font-size:14px;line-height:1.2;
+overflow-wrap:normal;word-break:normal;hyphens:none}.dashboard-kill-chain .app span{font-size:11px}
+.dashboard-kill-chain .app:before{width:58px;height:58px}
+.dashboard-board .app strong{overflow-wrap:normal;word-break:normal;hyphens:none}
+.dashboard-actions .dashboard-scroll-track{max-height:360px;overflow-y:auto;overscroll-behavior-y:contain;padding:0 0 0}
+.dashboard-actions .dashboard-scroll.has-overflow .dashboard-scroll-track{padding:36px 0}
 .dashboard-board .metric-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.dashboard-board .metric-card{
 padding:10px;min-height:76px}.dashboard-board .metric-card strong{font-size:22px}.dashboard-board .metric-card span{font-size:11px}
 .dashboard-board .timeline{gap:6px;max-height:280px;overflow:auto;padding-right:4px}.dashboard-board .timeline-item{
@@ -1588,6 +1604,22 @@ map.addEventListener("touchend",()=>mapPinchDistance=0);
 document.getElementById("map-layer")?.addEventListener("change",redrawGeoMap);
 document.getElementById("map-zoom")?.addEventListener("change",redrawGeoMap);
 }});
+window.addEventListener("DOMContentLoaded",()=>{{
+document.querySelectorAll("[data-scroll-panel]").forEach(panel=>{{
+const track=panel.querySelector("[data-scroll-track]");
+if(!track)return;
+const axis=panel.dataset.scrollAxis||"x";
+const update=()=>panel.classList.toggle("has-overflow",axis==="y"?track.scrollHeight>track.clientHeight+4:track.scrollWidth>track.clientWidth+4);
+panel.querySelectorAll("[data-scroll-dir]").forEach(button=>button.addEventListener("click",event=>{{
+event.preventDefault();
+const amount=Number(button.dataset.scrollDir||1)*Math.max(120,(axis==="y"?track.clientHeight:track.clientWidth)*.72);
+track.scrollBy(axis==="y"?{{top:amount,behavior:"smooth"}}:{{left:amount,behavior:"smooth"}});
+}}));
+update();
+track.addEventListener("scroll",update);
+window.addEventListener("resize",update);
+}});
+}});
 const loadingSteps={{
 discover:["Validation du réseau privé autorisé","Sélection de Nmap ou du moteur portable",
 "Envoi des sondes de découverte","Collecte des hôtes ayant répondu",
@@ -1806,18 +1838,18 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
         record_metrics = _records_metrics()
         timeline = _timeline_preview(4)
         kill_steps = [
-            ("Reconnaissance", "Observer Wi-Fi, Bluetooth, IP et HTTP.", "/scanner"),
-            ("Scan", "Identifier hotes actifs et ports TCP.", "/scanner"),
-            ("Enumeration", "Transformer une cible en fiche appareil.", "/devices"),
-            ("Analyse", "Lire DNS, TLS, journaux et fichiers.", "/tools"),
-            ("Hypotheses", "Proposer des axes defensifs.", "/reports"),
-            ("Correlation", "Relier actifs, preuves et historique.", "/reports"),
-            ("Recommandations", "Prioriser les actions possibles.", "/reports"),
-            ("Rapport", "Restituer les constats autorises.", "/reports"),
+            ("Recon", "Observer Wi-Fi, Bluetooth, IP et HTTP.", "/scanner", "REC"),
+            ("Scan", "Identifier hotes actifs et ports TCP.", "/scanner", "SCN"),
+            ("Enum", "Transformer une cible en fiche appareil.", "/devices", "ENU"),
+            ("Analyse", "Lire DNS, TLS, journaux et fichiers.", "/tools", "ANA"),
+            ("Hypotheses", "Proposer des axes defensifs.", "/reports", "HYP"),
+            ("Correlation", "Relier actifs, preuves et historique.", "/reports", "COR"),
+            ("Reco", "Prioriser les actions possibles.", "/reports", "REC"),
+            ("Rapport", "Restituer les constats autorises.", "/reports", "RAP"),
         ]
         kill_cards = "".join(
-            f'<a class="app" href="{href}"><strong>{escape(name)}</strong><span>{escape(text)}</span></a>'
-            for name, text, href in kill_steps
+            f'<a class="app" data-icon="{escape(icon)}" href="{href}"><strong>{escape(name)}</strong><span>{escape(text)}</span></a>'
+            for name, text, href, icon in kill_steps
         )
         settings_panel = _value(dict(settings_summary(settings)))
         body = f"""<div class="grid">
@@ -1830,14 +1862,18 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
 </div>
 <article class="dash-tile dashboard-hero kill-zone" data-widget-id="kill-chain"><span>Parcours defensif</span>
 <p class="muted tile-detail">Collecter, transformer en donnee reutilisable, correler, puis restituer.</p>
-<div class="app-grid tile-extra">{kill_cards}</div><div class="widget-actions"><a href="/kill-chain">Ouvrir</a></div></article>
+<div class="dashboard-scroll" data-scroll-panel><button class="dashboard-scroll-nav left" type="button" data-scroll-dir="-1">&#8249;</button>
+<div class="dashboard-kill-chain dashboard-scroll-track" data-scroll-track>{kill_cards}</div>
+<button class="dashboard-scroll-nav right" type="button" data-scroll-dir="1">&#8250;</button></div>
+<div class="widget-actions"><a href="/kill-chain">Ouvrir</a></div></article>
 <article class="dash-tile dashboard-actions" data-widget-id="actions"><span>Actions rapides</span>
-<div class="dashboard-action-list">
+<div class="dashboard-scroll vertical" data-scroll-panel data-scroll-axis="y"><button class="dashboard-scroll-nav left" type="button" data-scroll-dir="-1">&#8593;</button>
+<div class="dashboard-action-list dashboard-scroll-track" data-scroll-track>
 <a class="dashboard-action" href="/scanner"><span><strong>Scanner cible</strong><br>Choisir une ou plusieurs sources</span><b>Ouvrir</b></a>
 <a class="dashboard-action" href="/scanner?source_discover=1&source_ports=1&source_wifi=1&source_bluetooth=1&source_http=1"><span><strong>Recon complete</strong><br>Preset de collecte locale</span><b>Lancer</b></a>
 <a class="dashboard-action" href="/tools"><span><strong>Packet Observer</strong><br>Lire DNS, TCP, ARP et logs</span><b>Ouvrir</b></a>
 <a class="dashboard-action" href="/reports"><span><strong>Rapports</strong><br>Timeline, artefacts, correlations</span><b>Voir</b></a>
-</div></article>
+</div><button class="dashboard-scroll-nav right" type="button" data-scroll-dir="1">&#8595;</button></div></article>
 <article class="dash-tile dashboard-activity" data-widget-id="records"><span>Donnees reutilisables</span>
 <div class="tile-detail">{record_metrics}</div><div class="widget-actions"><a href="/reports">Ouvrir</a></div></article>
 <article class="dash-tile dashboard-activity" data-widget-id="timeline"><span>Timeline recente</span>
