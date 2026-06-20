@@ -215,7 +215,8 @@ class SafetyTests(unittest.TestCase):
         self.assertIn("time", context)
         topology = render_topology()
         self.assertIn("<svg", topology)
-        self.assertIn("TOOLBOX", topology)
+        self.assertIn("SCAN TOPO", topology)
+        self.assertIn('action="/topology"', topology)
         self.assertIn("recon SC", pwa_manifest())
 
     def test_gui_file_analysis_stays_inside_workspace(self):

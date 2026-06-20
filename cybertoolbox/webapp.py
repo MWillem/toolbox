@@ -190,6 +190,9 @@ clip-path:none;min-height:0;cursor:pointer}.context-weather:hover{background:tra
 .map{width:100%;min-height:430px;border:1px solid var(--line);background:#09090b}
 .node{fill:#18181c;stroke:var(--accent);stroke-width:2}.node-risk{stroke:var(--orange)}
 .edge{stroke:#5c5c62;stroke-width:1}.map-label{fill:#eee;font-size:12px}
+.topology-action{display:grid;place-items:center;width:128px;height:68px;border:1px solid var(--line);
+border-radius:999px;background:rgba(var(--panel-rgb),.88);backdrop-filter:blur(16px)}
+.topology-action button{width:112px;height:52px;border-radius:999px;clip-path:none;padding:0;font-size:12px}
 .badge{display:inline-block;padding:3px 7px;border:1px solid var(--line);background:var(--panel);
 backdrop-filter:blur(14px) saturate(130%);font-size:11px}
 .menu-toggle{position:fixed;left:22px;top:18px;z-index:40;width:44px;height:40px;padding:0;
@@ -1260,8 +1263,10 @@ def render_topology() -> str:
     elements = [
         f'<svg class="map" viewBox="0 0 {width} {height}" role="img" '
         'aria-label="Carte tactique des actifs autorisés">',
-        f'<circle class="node" cx="{center_x}" cy="{center_y}" r="48"/>',
-        f'<text class="map-label" x="{center_x}" y="{center_y}" text-anchor="middle">TOOLBOX</text>',
+        f'<circle class="node" cx="{center_x}" cy="{center_y}" r="58"/>',
+        f'<foreignObject x="{center_x - 64}" y="{center_y - 34}" width="128" height="68">'
+        '<form xmlns="http://www.w3.org/1999/xhtml" class="topology-action" method="post" action="/topology">'
+        '<button type="submit">SCAN TOPO</button></form></foreignObject>',
     ]
     count = max(1, len(assets))
     import math
@@ -1270,9 +1275,14 @@ def render_topology() -> str:
         angle = (2 * math.pi * index / count) - math.pi / 2
         x = center_x + math.cos(angle) * 300
         y = center_y + math.sin(angle) * 170
+        line_start_x = center_x + math.cos(angle) * 64
+        line_start_y = center_y + math.sin(angle) * 64
+        line_end_x = x - math.cos(angle) * 44
+        line_end_y = y - math.sin(angle) * 44
         risk = bool(asset["findings"])
         elements.append(
-            f'<line class="edge" x1="{center_x}" y1="{center_y}" x2="{x:.0f}" y2="{y:.0f}"/>'
+            f'<line class="edge" x1="{line_start_x:.0f}" y1="{line_start_y:.0f}" '
+            f'x2="{line_end_x:.0f}" y2="{line_end_y:.0f}"/>'
         )
         elements.append(
             f'<circle class="node{" node-risk" if risk else ""}" cx="{x:.0f}" cy="{y:.0f}" r="38"/>'
@@ -2020,6 +2030,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/context",
             "/tools",
             "/data",
+            "/topology",
             "/settings",
         }
         if _field(data, "token") != self.state.token and route_path not in local_routes:
@@ -2038,6 +2049,7 @@ class ToolboxHandler(BaseHTTPRequestHandler):
             "/context": lambda: self._run_context(data),
             "/tools": lambda: self._run_tools(data),
             "/data": lambda: self._run_data(data),
+            "/topology": self._run_topology,
             "/settings": lambda: self._save_settings(data),
         }
         handler = handlers.get(route_path)
@@ -2873,13 +2885,38 @@ placeholder="http://192.168.1.20/public/ ou \\\\serveur\\partage"></label>
             self.state.error = str(exc)
         self._redirect("/exposure")
 
+    def _run_topology(self) -> None:
+        self._clear()
+        try:
+            settings = load_settings()
+            network = local_ipv4_network()
+            results, engine = discover_hosts(network, settings.prefer_nmap)
+            saved = save_recon_records(
+                {"network": {"title": "Topologie reseau", "engine": engine, "items": results}},
+                subject=network,
+                scope="local_authorized",
+            )
+            self.state.scope_authorized = True
+            self.state.message = (
+                f"Topologie mise a jour : {len(results)} hote(s), "
+                f"{len(saved['artifacts'])} artefact(s)."
+            )
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/map?tab=network")
+
     def _map(self) -> None:
-        body = f"""<div class="grid"><section class="card full" data-tabs>
+        active_tab = parse_qs(urlparse(self.path).query).get("tab", ["geo"])[0]
+        if active_tab not in {"geo", "network"}:
+            active_tab = "geo"
+        geo_active = " active" if active_tab == "geo" else ""
+        network_active = " active" if active_tab == "network" else ""
+        body = f"""<div class="grid"><section class="card full" data-tabs data-active="{active_tab}">
 <span class="eyebrow">Map console</span><h2>Cartographie</h2>
-<div class="tabs"><button class="tab-button active" type="button"
+<div class="tabs"><button class="tab-button{geo_active}" type="button"
 data-tab="geo">Carte géographique</button><button class="tab-button" type="button"
 data-tab="network">Topologie réseau</button></div>
-<div class="tab-panel active" data-panel="geo">
+<div class="tab-panel{geo_active}" data-panel="geo">
 <div class="notice">La position est facultative, demandée par le navigateur et
 non enregistrée. Les appareils découverts sur le réseau ne sont jamais placés
 sur cette carte géographique.</div>
@@ -2933,7 +2970,7 @@ rel="noreferrer">OpenTopoMap</a>. CARTO :
 <a href="https://carto.com/attributions" target="_blank"
 rel="noreferrer">attributions</a>. Les modes Hologramme et SOC sont des rendus
 locaux au-dessus des tuiles OSM.</p></div>
-<div class="tab-panel" data-panel="network">{render_topology()}
+<div class="tab-panel{network_active}" data-panel="network">{render_topology()}
 <p class="muted">Vert : actif observé. Orange : service à vérifier. Cette vue
 est une topologie technique schématique, sans localisation physique.</p></div>
 </section></div>"""
