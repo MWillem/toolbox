@@ -261,11 +261,15 @@ box-shadow:0 8px 24px rgba(0,0,0,.28)}.dashboard-scroll-nav.left{left:4px}.dashb
 .dashboard-scroll.vertical .dashboard-scroll-nav.left{top:4px;left:50%;transform:translateX(-50%)}
 .dashboard-scroll.vertical .dashboard-scroll-nav.right{top:auto;right:auto;bottom:4px;left:50%;transform:translateX(-50%)}
 .dashboard-scroll.has-overflow .dashboard-scroll-nav{display:grid}.dashboard-kill-chain,.dashboard-module-rail{display:flex;
-gap:12px;overflow-x:auto;overscroll-behavior-x:contain;padding:8px 42px 4px 0}.dashboard-kill-chain .app{
-flex:0 0 118px;min-height:156px;padding:10px}.dashboard-kill-chain .app strong{font-size:14px;line-height:1.2;
+gap:12px;justify-content:space-between;overflow-x:auto;overscroll-behavior-x:contain;padding:8px 0 4px}
+.dashboard-scroll.has-overflow .dashboard-kill-chain,.dashboard-scroll.has-overflow .dashboard-module-rail{
+justify-content:flex-start;padding:8px 42px 4px}.dashboard-kill-chain .app{
+flex:1 1 118px;max-width:150px;min-height:156px;padding:10px}.dashboard-scroll.has-overflow .dashboard-kill-chain .app{flex:0 0 118px}
+.dashboard-kill-chain .app strong{font-size:14px;line-height:1.2;
 overflow-wrap:normal;word-break:normal;hyphens:none}.dashboard-kill-chain .app span{font-size:11px}
 .dashboard-kill-chain .app:before{width:58px;height:58px}
-.dashboard-module-rail .app{flex:0 0 150px;min-height:152px;padding:10px}.dashboard-module-rail .app:before{width:58px;height:58px}
+.dashboard-module-rail .app{flex:1 1 150px;max-width:190px;min-height:152px;padding:10px}
+.dashboard-scroll.has-overflow .dashboard-module-rail .app{flex:0 0 150px}.dashboard-module-rail .app:before{width:58px;height:58px}
 .dashboard-board .app strong{overflow-wrap:normal;word-break:normal;hyphens:none}
 .dashboard-actions .dashboard-scroll-track{max-height:360px;overflow-y:auto;overscroll-behavior-y:contain;padding:0 0 0}
 .dashboard-actions .dashboard-scroll.has-overflow .dashboard-scroll-track{padding:36px 0}
