@@ -352,12 +352,16 @@ filter:drop-shadow(0 0 5px var(--accent))}
 .quick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:14px;align-items:start}
 .quick-toggle{position:relative;display:grid;justify-items:center;gap:8px;padding:10px;border:1px solid transparent;
 background:transparent;cursor:pointer;text-align:center}
+.tool-picker{position:sticky;top:0;z-index:8}.tool-picker .quick-toggle{min-height:104px}
+[data-tool-section]{display:none}[data-tool-section].active{display:grid}
 .quick-toggle input{position:absolute;opacity:0}.quick-icon{display:grid;place-items:center;width:62px;height:62px;
 border:1px solid var(--line);border-radius:50%;background:var(--panel);backdrop-filter:blur(18px) saturate(130%);
 color:var(--muted);font-weight:900;letter-spacing:.02em}.quick-toggle strong{color:var(--text);font-size:13px}
 .quick-toggle span{color:var(--muted);font-size:11px;line-height:1.35}.quick-toggle:has(input:checked) .quick-icon{
 border-color:var(--signal);color:#03100a;background:var(--signal);box-shadow:0 0 18px var(--glow)}
-.quick-toggle:has(input:checked) strong{color:var(--signal)}.recon-fields{display:grid;
+.quick-toggle:has(input:checked) strong,.quick-toggle.active strong{color:var(--signal)}
+.quick-toggle.active .quick-icon{border-color:var(--signal);color:#03100a;background:var(--signal);box-shadow:0 0 18px var(--glow)}
+.recon-fields{display:grid;
 grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.recon-fields [hidden]{display:none}
 .recon-result{display:grid;gap:14px}
 .recon-category{padding:14px;border:1px solid var(--line);background:var(--panel);
@@ -1377,12 +1381,29 @@ item.dataset.icon=appIcons[label]||label.slice(0,3).toUpperCase()||"GO";
 document.querySelectorAll("[data-tabs]").forEach(group=>{{
 const buttons=group.querySelectorAll("[data-tab]");
 const panels=group.querySelectorAll("[data-panel]");
+const activate=name=>{{
+buttons.forEach(item=>item.classList.toggle("active",item.dataset.tab===name));
+panels.forEach(item=>item.classList.toggle("active",item.dataset.panel===name));
+}};
 buttons.forEach(button=>button.addEventListener("click",()=>{{
-buttons.forEach(item=>item.classList.remove("active"));
-panels.forEach(item=>item.classList.remove("active"));
-button.classList.add("active");
-group.querySelector(`[data-panel="${{button.dataset.tab}}"]`)?.classList.add("active");
+activate(button.dataset.tab);
 }}));
+activate(group.dataset.active||buttons[0]?.dataset.tab||"");
+}});
+document.querySelectorAll("[data-tool-picker]").forEach(picker=>{{
+const sections=document.querySelectorAll("[data-tool-section]");
+const choices=picker.querySelectorAll("[data-tool-choice]");
+const activateTool=name=>{{
+sections.forEach(section=>section.classList.toggle("active",section.dataset.toolSection===name));
+choices.forEach(choice=>choice.classList.toggle("active",choice.dataset.toolChoice===name));
+}};
+choices.forEach(choice=>choice.addEventListener("click",event=>{{
+event.preventDefault();
+const name=choice.dataset.toolChoice||"core";
+history.replaceState({{}},"","/tools?tool="+encodeURIComponent(name));
+activateTool(name);
+}}));
+activateTool(picker.dataset.activeTool||"core");
 }});
 document.querySelectorAll("[name=theme]").forEach(choice=>choice.addEventListener("change",()=>{{
 document.body.dataset.theme=choice.value;
@@ -1884,7 +1905,7 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
             ("Recon", "Observer Wi-Fi, Bluetooth, IP et HTTP.", "/scanner", "REC"),
             ("Scan", "Identifier hotes actifs et ports TCP.", "/scanner", "SCN"),
             ("Enum", "Transformer une cible en fiche appareil.", "/devices", "ENU"),
-            ("Analyse", "Lire DNS, TLS, journaux et fichiers.", "/tools", "ANA"),
+            ("Analyse", "Lire DNS, TLS, journaux et fichiers.", "/tools?tool=core", "ANA"),
             ("Hypotheses", "Proposer des axes defensifs.", "/reports", "HYP"),
             ("Correlation", "Relier actifs, preuves et historique.", "/reports", "COR"),
             ("Reco", "Prioriser les actions possibles.", "/reports", "REC"),
@@ -1914,8 +1935,8 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
 <div class="dashboard-action-list dashboard-scroll-track" data-scroll-track>
 <a class="dashboard-action" href="/scanner"><span><strong>Scanner cible</strong><br>Choisir une ou plusieurs sources</span><b>Ouvrir</b></a>
 <a class="dashboard-action" href="/scanner?source_discover=1&source_ports=1&source_wifi=1&source_bluetooth=1&source_http=1"><span><strong>Recon complete</strong><br>Preset de collecte locale</span><b>Lancer</b></a>
-<a class="dashboard-action" href="/tools#camera-scan"><span><strong>Scan camera</strong><br>QR, image et preparation OCR</span><b>Ouvrir</b></a>
-<a class="dashboard-action" href="/tools"><span><strong>Packet Observer</strong><br>Lire DNS, TCP, ARP et logs</span><b>Ouvrir</b></a>
+<a class="dashboard-action" href="/tools?tool=camera"><span><strong>Scan camera</strong><br>QR, image et preparation OCR</span><b>Ouvrir</b></a>
+<a class="dashboard-action" href="/tools?tool=packet"><span><strong>Packet Observer</strong><br>Lire DNS, TCP, ARP et logs</span><b>Ouvrir</b></a>
 <a class="dashboard-action" href="/reports"><span><strong>Rapports</strong><br>Timeline, artefacts, correlations</span><b>Voir</b></a>
 </div><button class="dashboard-scroll-nav right" type="button" data-scroll-dir="1">&#8595;</button></div></article>
 <article class="dash-tile dashboard-activity" data-widget-id="records"><span>Donnees reutilisables</span>
@@ -1929,7 +1950,7 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
 <a class="app" href="/devices"><strong>Appareils</strong><span>Profil et confiance</span></a>
 <a class="app" href="/monitoring"><strong>Monitoring</strong><span>Sante locale et exposition</span></a>
 <a class="app" href="/map"><strong>Carte</strong><span>Carte et topologie reseau</span></a>
-<a class="app" href="/tools"><strong>Outils</strong><span>Systeme, hash, DNS, TLS</span></a>
+<a class="app" href="/tools?tool=core"><strong>Outils</strong><span>Systeme, hash, DNS, TLS</span></a>
 <a class="app" href="/missions"><strong>Missions</strong><span>Scenarios pedagogiques</span></a>
 <a class="app" href="/reports"><strong>Rapports</strong><span>{history_count} historiques / {len(list_reports())} rapports</span></a>
 </div><button class="dashboard-scroll-nav right" type="button" data-scroll-dir="1">&#8250;</button></div></article>
@@ -1947,7 +1968,7 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
             ("Reconnaissance", "Observer le réseau, le Wi-Fi, le Bluetooth et HTTP.", "/scanner"),
             ("Scan", "Identifier les hôtes actifs et les ports exposés.", "/scanner"),
             ("Énumération", "Transformer une cible en fiche appareil.", "/devices"),
-            ("Analyse", "Lire DNS, TLS, journaux, fichiers et configuration.", "/tools"),
+            ("Analyse", "Lire DNS, TLS, journaux, fichiers et configuration.", "/tools?tool=core"),
             ("Hypothèses", "Formuler des axes défensifs sans exploitation active.", "/reports"),
             ("Corrélation", "Relier actifs, preuves, historique et exposition.", "/reports"),
             ("Recommandations", "Prioriser les corrections et limites de confiance.", "/reports"),
@@ -1977,7 +1998,7 @@ connecté au réseau ou d'avoir une route explicitement autorisée.</p></section
 <div class="metric">{exposure['asset_count']:02d}</div><p>actifs observés</p>
 <span class="badge">{exposure['service_count']} services</span></section>
 <section class="card full"><h2>Suites possibles</h2><div class="app-grid">
-<a class="app" href="/tools"><strong>Audit local</strong><span>Santé système et configuration</span></a>
+<a class="app" href="/tools?tool=core"><strong>Audit local</strong><span>Santé système et configuration</span></a>
 <a class="app" href="/exposure"><strong>Inventaire</strong><span>Actifs et services collectés</span></a>
 <a class="app" href="/reports"><strong>Rapports</strong><span>Historique et restitution</span></a>
 </div></section></div>"""
@@ -2106,7 +2127,7 @@ puis le resultat s'ouvre dans une fenetre. La conservation des donnees se decide
 <span class="quick-icon">BT</span><strong>Bluetooth</strong><span>Inventaire OS</span></label>
 <label class="quick-toggle"><input type="checkbox" name="source_http"{checked("source_http")}>
 <span class="quick-icon">HTTP</span><strong>HTTP</strong><span>Entetes passifs</span></label>
-<a class="quick-toggle" href="/tools"><span class="quick-icon">PKT</span><strong>Packet Observer</strong>
+<a class="quick-toggle" href="/tools?tool=packet"><span class="quick-icon">PKT</span><strong>Packet Observer</strong>
 <span>Logs reseau pedagogiques</span></a>
 </div><input type="hidden" name="subject" value="{subject_value}">
 <div class="recon-fields"><label data-recon-field="network">Reseau local autorise
@@ -2720,7 +2741,19 @@ La météo nécessite des coordonnées consenties et une connexion Internet.</p>
         self._redirect("/context")
 
     def _tools(self) -> None:
-        body = f"""<div class="grid"><section class="card wide"><h2>Outils techniques</h2>
+        requested = parse_qs(urlparse(self.path).query).get("tool", ["core"])[0]
+        active_tool = requested if requested in {"core", "qr", "camera", "nfc", "crypto", "packet"} else "core"
+        body = f"""<div class="grid"><section class="card full tool-picker" data-tool-picker data-active-tool="{escape(active_tool)}">
+<h2>Outils</h2><p class="muted">Choisissez un module. Les champs des autres modules restent accessibles sans envahir la page.</p>
+<div class="quick-grid">
+<a class="quick-toggle" data-tool-choice="core" href="/tools?tool=core"><span class="quick-icon">SYS</span><strong>Techniques</strong><span>Système, DNS, TLS, fichiers</span></a>
+<a class="quick-toggle" data-tool-choice="packet" href="/tools?tool=packet"><span class="quick-icon">PKT</span><strong>Packet Observer</strong><span>Logs réseau lisibles</span></a>
+<a class="quick-toggle" data-tool-choice="camera" href="/tools?tool=camera"><span class="quick-icon">CAM</span><strong>Scan caméra</strong><span>QR, image, OCR prévu</span></a>
+<a class="quick-toggle" data-tool-choice="qr" href="/tools?tool=qr"><span class="quick-icon">QR</span><strong>QR Code</strong><span>Générer, lire, décoder</span></a>
+<a class="quick-toggle" data-tool-choice="nfc" href="/tools?tool=nfc"><span class="quick-icon">NFC</span><strong>NFC</strong><span>Lecture, écriture lab</span></a>
+<a class="quick-toggle" data-tool-choice="crypto" href="/tools?tool=crypto"><span class="quick-icon">HSH</span><strong>Hash / Crypto</strong><span>Empreintes, Base64, XOR</span></a>
+</div></section>
+<section class="card wide" data-tool-section="core"><h2>Outils techniques</h2>
 <form method="post" action="/tools">{self._token()}
 <label>Action<select name="action"><option value="system">Audit du système local</option>
 <option value="hash">Hash SHA-256 d'un texte</option><option value="dns">Résolution DNS</option>
@@ -2735,11 +2768,11 @@ La météo nécessite des coordonnées consenties et une connexion Internet.</p>
 <label>Valeur ou chemin<input name="value"
 placeholder="Texte, domaine ou chemin relatif, ex. lab_workspace/suspicious.log"></label>
 <button type="submit">EXÉCUTER</button></form></section>
-<section class="card"><h2>Limite des fichiers</h2><p class="muted">
+<section class="card" data-tool-section="core"><h2>Limite des fichiers</h2><p class="muted">
 Pour protéger l'appareil, le GUI analyse uniquement les fichiers présents dans
 le dossier de la toolbox. Les chemins absolus extérieurs sont refusés.</p>
 <a href="/lab">Préparer les artefacts du laboratoire</a></section>
-<section class="card full"><span class="eyebrow">QR Code</span>
+<section class="card full" data-tool-section="qr"><span class="eyebrow">QR Code</span>
 <h2>Generer ou lire un QR</h2><p class="muted">Texte, URL, Wi-Fi, contact, mission recon SC,
 note ou payload pedagogique inoffensif. Les URL sont signalees avant ouverture.</p>
 <form method="post" action="/tools">{self._token()}
@@ -2769,7 +2802,7 @@ placeholder="https://example.org ou note de mission"></textarea></label>
 <label>Decoder un contenu Wi-Fi<textarea name="value" rows="2"
 placeholder="WIFI:T:WPA;S:Classe;P:secret;;"></textarea></label>
 <button type="submit">DECODER WIFI</button></form></section>
-<section class="card full" id="camera-scan"><span class="eyebrow">Scan camera</span>
+<section class="card full" id="camera-scan" data-tool-section="camera"><span class="eyebrow">Scan camera</span>
 <h2>Scanner image, QR ou texte</h2><p class="muted">Utilise le materiel camera du navigateur quand il est disponible.
 Le scan QR reste local. L'OCR texte sera branche ensuite avec un moteur dedie.</p>
 <div class="recon-fields"><label>Image ou camera<input id="camera-scan-file" type="file"
@@ -2779,7 +2812,7 @@ rows="5" placeholder="Le contenu QR ou le texte extrait apparaitra ici."></texta
 <button type="button" id="camera-scan-copy">COPIER</button></div>
 <div class="notice" id="camera-scan-status">Sur mobile, le champ image peut ouvrir directement la camera.</div>
 </section>
-<section class="card full"><span class="eyebrow">NFC Tools</span>
+<section class="card full" data-tool-section="nfc"><span class="eyebrow">NFC Tools</span>
 <h2>Lire, ecrire ou decoder un tag</h2><p class="muted">Lecture locale si le materiel le permet,
 ecriture simple texte/URL/mission, parsing NDEF de lab et historique. Aucune emulation de badge.</p>
 <form method="post" action="/tools">{self._token()}
@@ -2796,7 +2829,7 @@ placeholder="D10105540266724F4B ou https://example.org"></textarea></label>
 <button type="submit">EXECUTER NFC</button></form>
 <div class="notice">Sur Termux, il faut Termux:API, le paquet termux-api et les permissions NFC/proximite selon Android.</div>
 </section>
-<section class="card full"><span class="eyebrow">Hash / Crypto pedagogique</span>
+<section class="card full" data-tool-section="crypto"><span class="eyebrow">Hash / Crypto pedagogique</span>
 <h2>Empreintes, encodage et chiffrement demo</h2><p class="muted">SHA-256, SHA-512,
 BLAKE2, MD5 pedagogique, detection de format probable, Base64 et XOR avec cle connue.</p>
 <form method="post" action="/tools">{self._token()}
@@ -2812,7 +2845,7 @@ BLAKE2, MD5 pedagogique, detection de format probable, Base64 et XOR avec cle co
 <label>Cle connue pour XOR<input name="crypto_key" placeholder="cle de demonstration"></label>
 <label class="check"><input type="checkbox" name="keep">Conserver le resultat comme artefact.</label>
 <button type="submit">EXECUTER</button></form></section>
-<section class="card full"><span class="eyebrow">Mini Wireshark pedagogique</span>
+<section class="card full" data-tool-section="packet"><span class="eyebrow">Mini Wireshark pedagogique</span>
 <h2>Packet Observer</h2><p class="muted">Collez quelques lignes de trafic ou laissez vide pour
 charger une demo. L'outil lit des logs fournis : il ne capture pas d'interface
 reseau et ne tente jamais de dechiffrer HTTPS.</p>
@@ -2927,7 +2960,15 @@ placeholder="192.168.1.10 -> 140.82.121.4 TCP 51544 443 SYN github.com"></textar
             self.state.result = result
         except (ValueError, OSError) as exc:
             self.state.error = str(exc)
-        self._redirect("/tools")
+        tool_by_action = {
+            "packet": "packet",
+            "qr_generate": "qr",
+            "qr_read_file": "qr",
+            "qr_decode_wifi": "qr",
+            "nfc_tool": "nfc",
+            "crypto_tool": "crypto",
+        }
+        self._redirect(f"/tools?tool={tool_by_action.get(_field(data, 'action', 'core'), 'core')}")
 
     def _wireless(self) -> None:
         body = f"""<div class="grid"><section class="card full" data-tabs>
