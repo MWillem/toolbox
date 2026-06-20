@@ -239,14 +239,15 @@ box-shadow:0 0 12px var(--signal)}
 .dash-tile strong{font-size:20px;line-height:1.18;color:var(--accent);overflow-wrap:anywhere}
 .dash-tile span,.dash-tile small{color:var(--muted)}.dash-tile .app-grid{grid-template-columns:repeat(auto-fit,minmax(98px,1fr))}
 .dash-tile.size-s .tile-detail,.dash-tile.size-s .tile-extra,.dash-tile.size-s .app-grid{display:none}.dash-tile.size-s small{font-size:10px}
-.dash-tile.size-m .tile-extra{display:none}.widget-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:auto}
-.widget-actions a{border-radius:999px;clip-path:none;padding:6px 9px;font-size:12px}
+.dash-tile.size-m .tile-extra{display:none}.widget-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+.widget-actions a{border-radius:999px;clip-path:none;padding:6px 9px;font-size:12px;line-height:1.1;white-space:nowrap}
 .dashboard-metrics{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
 .dash-metric{min-height:92px;padding:14px;border:1px solid var(--line);border-radius:var(--radius);
 background:var(--panel);backdrop-filter:blur(22px) saturate(140%);display:grid;align-content:space-between;gap:8px}
 .dash-metric span{color:var(--muted);font-size:12px}.dash-metric strong{color:var(--accent);font-size:26px;line-height:1}
 .dash-metric small{color:var(--muted);font-size:11px}.dashboard-hero{grid-column:1/-1}
-.dashboard-actions,.dashboard-activity,.dashboard-config{grid-column:span 4}.dashboard-modules{grid-column:1/-1}
+.dashboard-row{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;align-items:start}
+.dashboard-actions,.dashboard-activity,.dashboard-config{grid-column:auto}.dashboard-modules{grid-column:1/-1}
 .dashboard-actions{align-content:start}.dashboard-action-list{display:grid;gap:10px}.dashboard-action{
 display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);
 border-radius:12px;background:rgba(var(--panel-rgb),.38);text-decoration:none;color:var(--text)}
@@ -259,16 +260,17 @@ place-items:center;background:rgba(var(--panel-rgb),.94);color:var(--text);borde
 box-shadow:0 8px 24px rgba(0,0,0,.28)}.dashboard-scroll-nav.left{left:4px}.dashboard-scroll-nav.right{right:4px}
 .dashboard-scroll.vertical .dashboard-scroll-nav.left{top:4px;left:50%;transform:translateX(-50%)}
 .dashboard-scroll.vertical .dashboard-scroll-nav.right{top:auto;right:auto;bottom:4px;left:50%;transform:translateX(-50%)}
-.dashboard-scroll.has-overflow .dashboard-scroll-nav{display:grid}.dashboard-kill-chain{display:flex;
+.dashboard-scroll.has-overflow .dashboard-scroll-nav{display:grid}.dashboard-kill-chain,.dashboard-module-rail{display:flex;
 gap:12px;overflow-x:auto;overscroll-behavior-x:contain;padding:8px 42px 4px 0}.dashboard-kill-chain .app{
 flex:0 0 118px;min-height:156px;padding:10px}.dashboard-kill-chain .app strong{font-size:14px;line-height:1.2;
 overflow-wrap:normal;word-break:normal;hyphens:none}.dashboard-kill-chain .app span{font-size:11px}
 .dashboard-kill-chain .app:before{width:58px;height:58px}
+.dashboard-module-rail .app{flex:0 0 150px;min-height:152px;padding:10px}.dashboard-module-rail .app:before{width:58px;height:58px}
 .dashboard-board .app strong{overflow-wrap:normal;word-break:normal;hyphens:none}
 .dashboard-actions .dashboard-scroll-track{max-height:360px;overflow-y:auto;overscroll-behavior-y:contain;padding:0 0 0}
 .dashboard-actions .dashboard-scroll.has-overflow .dashboard-scroll-track{padding:36px 0}
-.dashboard-board .metric-row{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.dashboard-board .metric-card{
-padding:10px;min-height:76px}.dashboard-board .metric-card strong{font-size:22px}.dashboard-board .metric-card span{font-size:11px}
+.dashboard-board .metric-row{grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}.dashboard-board .metric-card{
+padding:10px;min-height:76px;min-width:0}.dashboard-board .metric-card strong{font-size:22px}.dashboard-board .metric-card span{font-size:11px;overflow-wrap:normal;word-break:normal}
 .dashboard-board .timeline{gap:6px;max-height:280px;overflow:auto;padding-right:4px}.dashboard-board .timeline-item{
 padding:8px 0 8px 12px}.dashboard-board .timeline-item strong{font-size:14px;line-height:1.35;color:var(--text)}
 .dashboard-board .timeline-item .muted{font-size:11px}.dashboard-board .status-badge{font-size:10px;padding:3px 7px}
@@ -435,6 +437,9 @@ body[data-app-mode="light"] .quick-toggle span,body[data-app-mode="light"] .app 
 body[data-app-mode="light"] .quick-toggle strong,body[data-app-mode="light"] .app strong{color:#0f172a}
 .brand{margin-bottom:14px}
 nav{display:grid}.card,.card.wide{grid-column:span 6}}
+@media(max-width:1180px){.dashboard-row{grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+.dashboard-actions,.dashboard-activity{min-width:0}.dashboard-action{align-items:flex-start}
+.dashboard-action b{padding-top:2px}.dashboard-board .timeline{max-height:340px}}
 @media(max-width:600px){main{padding:76px 12px 40px}.topline{padding-left:0;gap:10px;grid-template-columns:1fr}.card,.card.wide,.card.full{
 grid-column:1/-1}.table-wrap{overflow-x:auto}
 .sidebar{padding:14px}.brand{margin-bottom:14px}.app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -442,8 +447,9 @@ grid-column:1/-1}.table-wrap{overflow-x:auto}
 .quick-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.quick-toggle{padding:8px}
 .dashboard-board{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
 .dashboard-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.dashboard-hero,.dashboard-actions,.dashboard-activity,.dashboard-modules,.dashboard-config,
+.dashboard-hero,.dashboard-modules,.dashboard-config,
 .dash-tile.size-s,.dash-tile.size-m,.dash-tile.size-l,.dash-tile.size-xl,.dash-tile.size-tall{grid-column:1/-1}
+.dashboard-row{grid-template-columns:1fr}
 .dashboard-board .metric-row{grid-template-columns:1fr}
 .context-bar{font-size:12px;background:rgba(var(--panel-rgb),.96)}
 .geo-tools{grid-template-columns:1fr}.geo-tool-row{grid-template-columns:1fr}.geo-map{height:56vh}
@@ -1896,6 +1902,7 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
 <div class="dashboard-kill-chain dashboard-scroll-track" data-scroll-track>{kill_cards}</div>
 <button class="dashboard-scroll-nav right" type="button" data-scroll-dir="1">&#8250;</button></div>
 <div class="widget-actions"><a href="/kill-chain">Ouvrir</a></div></article>
+<div class="dashboard-row">
 <article class="dash-tile dashboard-actions" data-widget-id="actions"><span>Actions rapides</span>
 <div class="dashboard-scroll vertical" data-scroll-panel data-scroll-axis="y"><button class="dashboard-scroll-nav left" type="button" data-scroll-dir="-1">&#8593;</button>
 <div class="dashboard-action-list dashboard-scroll-track" data-scroll-track>
@@ -1909,14 +1916,17 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
 <div class="tile-detail">{record_metrics}</div><div class="widget-actions"><a href="/reports">Ouvrir</a></div></article>
 <article class="dash-tile dashboard-activity" data-widget-id="timeline"><span>Timeline recente</span>
 <div class="tile-detail">{timeline}</div><div class="widget-actions"><a href="/reports#timeline">Ouvrir</a></div></article>
-<article class="dash-tile dashboard-modules" data-widget-id="modules"><span>Modules</span><div class="app-grid tile-extra">
+</div>
+<article class="dash-tile dashboard-modules" data-widget-id="modules"><span>Modules</span>
+<div class="dashboard-scroll" data-scroll-panel><button class="dashboard-scroll-nav left" type="button" data-scroll-dir="-1">&#8249;</button>
+<div class="dashboard-module-rail dashboard-scroll-track" data-scroll-track>
 <a class="app" href="/devices"><strong>Appareils</strong><span>Profil et confiance</span></a>
 <a class="app" href="/monitoring"><strong>Monitoring</strong><span>Sante locale et exposition</span></a>
 <a class="app" href="/map"><strong>Carte</strong><span>Carte et topologie reseau</span></a>
 <a class="app" href="/tools"><strong>Outils</strong><span>Systeme, hash, DNS, TLS</span></a>
 <a class="app" href="/missions"><strong>Missions</strong><span>Scenarios pedagogiques</span></a>
 <a class="app" href="/reports"><strong>Rapports</strong><span>{history_count} historiques / {len(list_reports())} rapports</span></a>
-</div></article>
+</div><button class="dashboard-scroll-nav right" type="button" data-scroll-dir="1">&#8250;</button></div></article>
 </section></div>"""
         self._send(render_layout("Accueil", body))
         return
