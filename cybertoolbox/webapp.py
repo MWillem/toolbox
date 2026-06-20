@@ -183,6 +183,8 @@ box-shadow:0 0 22px var(--glow)}.group-label{margin:22px 0 8px;color:var(--signa
 letter-spacing:.12em;font-size:11px;text-transform:uppercase}.context-bar{display:flex;
 gap:18px;flex-wrap:wrap;padding:10px 14px;background:rgba(121,255,61,.1);
 border:1px solid var(--line);color:var(--signal);font-weight:700}
+.context-weather{border:0;background:transparent;color:var(--signal);padding:0;font:inherit;font-weight:700;
+clip-path:none;min-height:0;cursor:pointer}.context-weather:hover{background:transparent;color:var(--accent)}
 .map{width:100%;min-height:430px;border:1px solid var(--line);background:#09090b}
 .node{fill:#18181c;stroke:var(--accent);stroke-width:2}.node-risk{stroke:var(--orange)}
 .edge{stroke:#5c5c62;stroke-width:1}.map-label{fill:#eee;font-size:12px}
@@ -1322,7 +1324,8 @@ data-map-mode="{map_mode}" style="--glass-alpha:{glass_alpha}">
 <h1 class="page-heading">recon SC // interface locale autorisée / {escape(title)}</h1></div></div>
 <div class="top-actions"><a class="button back-button icon-button" href="/settings" aria-label="Réglages" title="Réglages">&#9881;</a></div></div>
 <div class="context-bar"><span id="live-clock">{escape(context['time'])}</span>
-<span>{escape(context['timezone'])}</span><span>{escape(context['platform'])}</span><span>{weather_label}</span></div>
+<span>{escape(context['timezone'])}</span><span>{escape(context['platform'])}</span>
+<button class="context-weather" id="context-weather" type="button" title="Charger la météo avec votre position">{weather_label}</button></div>
 {body}<footer class="ownership">recon SC · Cyber Learning Toolbox © 2026 Maréchaux Willem ·
 Projet original distribué sous licence MIT · La notice de copyright doit être conservée.</footer>
 </main></div>
@@ -1333,6 +1336,39 @@ Projet original distribué sous licence MIT · La notice de copyright doit être
 <p class="muted">Gardez cette page ouverte. Le résultat s'affichera automatiquement.</p>
 </section></div><script>
 setInterval(()=>{{const e=document.getElementById('live-clock');if(e)e.textContent=new Date().toLocaleTimeString();}},1000);
+window.addEventListener("DOMContentLoaded",()=>{{
+const weatherButton=document.getElementById("context-weather");
+if(!weatherButton)return;
+const applyWeather=data=>{{
+if(!data)return;
+const temperature=Number(data.temperature);
+weatherButton.textContent=Number.isFinite(temperature)?`Meteo ${{temperature.toFixed(1)}} °C`:"Meteo --";
+weatherButton.title=data.description?`${{data.description}} · ressenti ${{data.apparent_temperature}} °C · vent ${{data.wind_speed}} km/h`:"Meteo locale";
+}};
+try{{
+const cached=JSON.parse(localStorage.getItem("recon-weather")||"null");
+if(cached&&Date.now()-cached.savedAt<3600000)applyWeather(cached);
+}}catch(error){{}}
+weatherButton.addEventListener("click",()=>{{
+if(!navigator.geolocation){{weatherButton.textContent="Meteo indisponible";return;}}
+weatherButton.textContent="Meteo...";
+navigator.geolocation.getCurrentPosition(async position=>{{
+const lat=position.coords.latitude.toFixed(5);
+const lon=position.coords.longitude.toFixed(5);
+const url=`https://api.open-meteo.com/v1/forecast?latitude=${{lat}}&longitude=${{lon}}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`;
+try{{
+const response=await fetch(url);
+if(!response.ok)throw new Error("HTTP "+response.status);
+const payload=await response.json();
+const current=payload.current||{{}};
+const data={{savedAt:Date.now(),temperature:current.temperature_2m,apparent_temperature:current.apparent_temperature,
+wind_speed:current.wind_speed_10m,description:"Open-Meteo"}};
+localStorage.setItem("recon-weather",JSON.stringify(data));
+applyWeather(data);
+}}catch(error){{weatherButton.textContent="Meteo erreur";weatherButton.title=error.message;}}
+}},error=>{{weatherButton.textContent="Meteo refusee";weatherButton.title=error.message;}},{{enableHighAccuracy:false,timeout:10000,maximumAge:600000}});
+}});
+}});
 function locate(){{if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(p=>{{
 document.querySelector('[name=latitude]').value=p.coords.latitude.toFixed(5);
 document.querySelector('[name=longitude]').value=p.coords.longitude.toFixed(5);}});}}
