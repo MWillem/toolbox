@@ -78,7 +78,7 @@ from .records import (
     save_record,
     save_recon_records,
 )
-from .settings import Settings, load_settings, save_settings, settings_summary
+from .settings import Settings, load_settings, save_settings
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -150,9 +150,11 @@ nav a:hover{color:var(--text);
 border-color:var(--signal);background:rgba(121,255,61,.08)}main{min-width:0;
 padding:72px clamp(18px,4vw,54px) 60px;transition:padding-left .25s ease}.shell:not(.nav-collapsed) main{
 padding-left:calc(286px + clamp(18px,4vw,54px))}.topline{display:grid;grid-template-columns:1fr auto;
-gap:16px;align-items:start;border-bottom:1px solid var(--line);
-margin-bottom:16px;padding-left:0;min-height:44px}.title-actions{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}
-.title-copy{min-width:0}.auth-label{padding-top:4px}h1{margin:0 0 12px;font-size:clamp(24px,4vw,42px);
+gap:16px;align-items:center;border-bottom:1px solid var(--line);
+margin-bottom:12px;padding-left:0;min-height:44px}.title-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.title-copy{min-width:0}.top-actions{display:flex;gap:8px;align-items:center}.page-heading{margin:0;
+font-size:18px;line-height:1.25;letter-spacing:.04em;text-transform:uppercase}.page-heading:before{content:"// ";color:var(--signal)}
+h1{margin:0 0 12px;font-size:clamp(24px,4vw,42px);
 letter-spacing:-.04em}h1:before{content:"// ";color:var(--signal)}h2{color:
 var(--signal);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
 .eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:11px}.grid{display:
@@ -244,7 +246,7 @@ box-shadow:0 0 12px var(--signal)}
 background:var(--panel);backdrop-filter:blur(22px) saturate(140%);display:grid;align-content:space-between;gap:8px}
 .dash-metric span{color:var(--muted);font-size:12px}.dash-metric strong{color:var(--accent);font-size:26px;line-height:1}
 .dash-metric small{color:var(--muted);font-size:11px}.dashboard-hero{grid-column:1/-1}
-.dashboard-actions,.dashboard-activity,.dashboard-config{grid-column:span 4}.dashboard-modules{grid-column:span 8}
+.dashboard-actions,.dashboard-activity,.dashboard-config{grid-column:span 4}.dashboard-modules{grid-column:1/-1}
 .dashboard-actions{align-content:start}.dashboard-action-list{display:grid;gap:10px}.dashboard-action{
 display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);
 border-radius:12px;background:rgba(var(--panel-rgb),.38);text-decoration:none;color:var(--text)}
@@ -1301,8 +1303,8 @@ data-map-mode="{map_mode}" style="--glass-alpha:{glass_alpha}">
 <main><div class="topline"><div class="title-copy"><div class="title-actions">
 <div class="page-actions"><a class="home-link" href="/" aria-label="Accueil">Accueil</a>
 <button class="back-button icon-button" type="button" onclick="history.back()" aria-label="Retour" title="Retour">&#8592;</button></div>
-<span class="eyebrow">recon SC // interface locale autorisée</span></div><h1>{escape(title)}</h1></div>
-<span class="muted auth-label">LOCAL // AUTHORIZED</span></div>
+<h1 class="page-heading">recon SC // interface locale autorisée / {escape(title)}</h1></div></div>
+<div class="top-actions"><a class="button back-button icon-button" href="/settings" aria-label="Réglages" title="Réglages">&#9881;</a></div></div>
 <div class="context-bar"><span id="live-clock">{escape(context['time'])}</span>
 <span>{escape(context['timezone'])}</span><span>{escape(context['platform'])}</span><span>{weather_label}</span></div>
 {body}<footer class="ownership">recon SC · Cyber Learning Toolbox © 2026 Maréchaux Willem ·
@@ -1880,7 +1882,6 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
             f'<a class="app" data-icon="{escape(icon)}" href="{href}"><strong>{escape(name)}</strong><span>{escape(text)}</span></a>'
             for name, text, href, icon in kill_steps
         )
-        settings_panel = _value(dict(settings_summary(settings)))
         body = f"""<div class="grid">
 <section class="dashboard-board" data-dashboard-board aria-label="Dashboard">
 <div class="dashboard-metrics">
@@ -1916,15 +1917,7 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
 <a class="app" href="/missions"><strong>Missions</strong><span>Scenarios pedagogiques</span></a>
 <a class="app" href="/reports"><strong>Rapports</strong><span>{history_count} historiques / {len(list_reports())} rapports</span></a>
 </div></article>
-<article class="dash-tile dashboard-config" data-widget-id="config"><span>Configuration</span>
-<strong>{escape(settings.theme)}</strong><small>Mode {escape(settings.app_color_mode)} - carte {escape(settings.map_color_mode)}</small>
-<div class="widget-actions"><a href="#config-active">Details</a><a href="/settings">Reglages</a></div></article>
-</section>
-<div class="dashboard-modal" id="config-active"><section class="result-panel">
-<header><div><span class="eyebrow">Dashboard</span><h2>Configuration active</h2></div>
-<a class="button back-button icon-button" href="#" aria-label="Fermer" title="Fermer">&#215;</a></header>
-{settings_panel}<div class="result-actions"><a class="button" href="/settings">OUVRIR LES PARAMETRES</a></div>
-</section></div></div>"""
+</section></div>"""
         self._send(render_layout("Accueil", body))
         return
 
