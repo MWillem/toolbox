@@ -190,9 +190,11 @@ clip-path:none;min-height:0;cursor:pointer}.context-weather:hover{background:tra
 .map{width:100%;min-height:430px;border:1px solid var(--line);background:#09090b}
 .node{fill:#18181c;stroke:var(--accent);stroke-width:2}.node-risk{stroke:var(--orange)}
 .edge{stroke:#5c5c62;stroke-width:1}.map-label{fill:#eee;font-size:12px}
-.topology-action{display:grid;place-items:center;width:128px;height:68px;border:1px solid var(--line);
-border-radius:999px;background:rgba(var(--panel-rgb),.88);backdrop-filter:blur(16px)}
-.topology-action button{width:112px;height:52px;border-radius:999px;clip-path:none;padding:0;font-size:12px}
+.topology-action{display:block;width:124px;height:124px}
+.topology-action button{width:124px;height:124px;border-radius:50%;clip-path:none;padding:0;
+display:grid;place-items:center;text-align:center;line-height:1.15;background:rgba(var(--panel-rgb),.9);
+color:var(--signal);border:3px solid var(--signal);box-shadow:0 0 26px var(--glow),inset 0 0 24px rgba(121,255,61,.08)}
+.topology-action button:hover{background:var(--signal);color:#03100a}
 .badge{display:inline-block;padding:3px 7px;border:1px solid var(--line);background:var(--panel);
 backdrop-filter:blur(14px) saturate(130%);font-size:11px}
 .menu-toggle{position:fixed;left:22px;top:18px;z-index:40;width:44px;height:40px;padding:0;
@@ -1263,10 +1265,9 @@ def render_topology() -> str:
     elements = [
         f'<svg class="map" viewBox="0 0 {width} {height}" role="img" '
         'aria-label="Carte tactique des actifs autorisés">',
-        f'<circle class="node" cx="{center_x}" cy="{center_y}" r="58"/>',
-        f'<foreignObject x="{center_x - 64}" y="{center_y - 34}" width="128" height="68">'
+        f'<foreignObject x="{center_x - 62}" y="{center_y - 62}" width="124" height="124">'
         '<form xmlns="http://www.w3.org/1999/xhtml" class="topology-action" method="post" action="/topology">'
-        '<button type="submit">SCAN TOPO</button></form></foreignObject>',
+        '<button type="submit">RESEAU<br/>IP</button></form></foreignObject>',
     ]
     count = max(1, len(assets))
     import math
@@ -1275,8 +1276,8 @@ def render_topology() -> str:
         angle = (2 * math.pi * index / count) - math.pi / 2
         x = center_x + math.cos(angle) * 300
         y = center_y + math.sin(angle) * 170
-        line_start_x = center_x + math.cos(angle) * 64
-        line_start_y = center_y + math.sin(angle) * 64
+        line_start_x = center_x + math.cos(angle) * 68
+        line_start_y = center_y + math.sin(angle) * 68
         line_end_x = x - math.cos(angle) * 44
         line_end_y = y - math.sin(angle) * 44
         risk = bool(asset["findings"])
