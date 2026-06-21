@@ -359,16 +359,11 @@ background:rgba(var(--panel-rgb),calc(var(--glass-alpha) + .08));backdrop-filter
 border:1px solid var(--line);background:#0a0a0d}
 .map-ui{position:absolute;right:12px;top:12px;z-index:8;display:grid;gap:6px}
 .map-ui button{width:38px;height:38px;padding:0;display:grid;place-items:center}
+.map-mode-button{font-size:16px}
+.geo-map.maplibre-live .maplibregl-canvas{outline:none}
+.geo-map.maplibre-live.map-night .maplibregl-canvas{filter:brightness(.68) contrast(1.12) saturate(.75)}
 .map-night .map-tile{filter:invert(1) hue-rotate(175deg) saturate(.75) brightness(.72) contrast(1.05)}
 .map-style-dark .map-tile{filter:contrast(1.08) saturate(.82) brightness(.72)}
-.map-style-cyber .map-tile{filter:invert(.92) hue-rotate(155deg) saturate(1.35) brightness(.7) contrast(1.18)}
-.map-style-soc .map-tile{filter:invert(1) hue-rotate(185deg) saturate(.35) brightness(.55) contrast(1.35)}
-.map-style-soc::after,.map-style-cyber::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:3;
-background:linear-gradient(90deg,rgba(124,255,107,.12) 1px,transparent 1px),
-linear-gradient(rgba(34,211,238,.08) 1px,transparent 1px);background-size:42px 42px;mix-blend-mode:screen}
-.map-style-soc::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:3;
-background:radial-gradient(circle at 38% 42%,rgba(34,211,238,.22),transparent 28%),
-radial-gradient(circle at 62% 58%,rgba(168,85,247,.18),transparent 24%);opacity:.55}
 .map-route{position:absolute;inset:0;z-index:4;pointer-events:none}
 .map-route path{fill:none;stroke:var(--accent);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;
 filter:drop-shadow(0 0 5px var(--accent))}
@@ -1551,13 +1546,14 @@ def render_layout(title: str, body: str, accepted: bool = True) -> str:
     glass_alpha = f"{settings.glass_opacity:.2f}"
     night = datetime.now().hour >= 19 or datetime.now().hour < 7
     app_mode = ("dark" if night else "light") if settings.app_color_mode == "auto" else settings.app_color_mode
-    map_mode = ("night" if night else "day") if settings.map_color_mode == "auto" else settings.map_color_mode
+    map_mode = "night" if night else "day"
     weather_label = "Meteo --"
     return f"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="/app-icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/app-icon.svg">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css">
 <meta name="theme-color" content="#79ff3d">
 <title>{escape(title)}</title><style>{CSS}</style></head>
 <body class="{body_class}" data-theme="{escape(settings.theme)}" data-app-mode="{app_mode}"
@@ -1703,20 +1699,58 @@ function effectiveAppMode(value){{
 const hour=new Date().getHours();return value==="auto"?(hour>=19||hour<7?"dark":"light"):value;
 }}
 function effectiveMapMode(value){{
-const hour=new Date().getHours();return value==="auto"?(hour>=19||hour<7?"night":"day"):value;
+if(value!=="auto")return value;
+if(geoState.lat!==null&&geoState.lon!==null)return sunModeForLocation(geoState.lat,geoState.lon);
+const hour=new Date().getHours();return hour>=19||hour<7?"night":"day";
+}}
+function sunModeForLocation(lat,lon){{
+const now=new Date();const start=new Date(now.getFullYear(),0,0);
+const day=Math.floor((now-start)/86400000);
+const lngHour=lon/15;
+const zenith=90.833;
+const calc=rise=>{{
+const t=day+((rise?6:18)-lngHour)/24;
+const m=(.9856*t)-3.289;
+let l=m+1.916*Math.sin(m*Math.PI/180)+.020*Math.sin(2*m*Math.PI/180)+282.634;
+l=(l+360)%360;
+let ra=Math.atan(.91764*Math.tan(l*Math.PI/180))*180/Math.PI;
+ra=(ra+360)%360;ra+=Math.floor(l/90)*90-Math.floor(ra/90)*90;ra/=15;
+const sinDec=.39782*Math.sin(l*Math.PI/180);
+const cosDec=Math.cos(Math.asin(sinDec));
+const cosH=(Math.cos(zenith*Math.PI/180)-sinDec*Math.sin(lat*Math.PI/180))/(cosDec*Math.cos(lat*Math.PI/180));
+if(cosH>1)return 24;if(cosH<-1)return 0;
+const h=(rise?360-Math.acos(cosH)*180/Math.PI:Math.acos(cosH)*180/Math.PI)/15;
+const local=(h+ra-(.06571*t)-6.622-lngHour+now.getTimezoneOffset()/-60+24)%24;
+return local;
+}};
+const sunrise=calc(true),sunset=calc(false);
+const current=now.getHours()+now.getMinutes()/60;
+return current>=sunrise&&current<sunset?"day":"night";
+}}
+function mapModeIcon(value){{
+return value==="day"?"☀":value==="night"?"☾":"◐";
+}}
+function setMapMode(value){{
+localStorage.setItem("mapColorMode",value);
+document.body.dataset.mapMode=effectiveMapMode(value);
+const button=document.getElementById("map-mode-cycle");
+if(button){{button.textContent=mapModeIcon(value);button.title="Mode carte : "+value;}}
+renderGeoMap();
+}}
+function cycleMapMode(){{
+const current=localStorage.getItem("mapColorMode")||"auto";
+const next=current==="auto"?"day":current==="day"?"night":"auto";
+setMapMode(next);
 }}
 function previewModes(){{
 const appValue=document.querySelector("[name=app_color_mode]:checked")?.value||"auto";
-const mapValue=document.querySelector("[name=map_color_mode]:checked")?.value||"auto";
 const appTrack=document.querySelector('[data-mode-track="app"]');
-const mapTrack=document.querySelector('[data-mode-track="map"]');
 if(appTrack)appTrack.dataset.value=appValue;
-if(mapTrack)mapTrack.dataset.value=mapValue;
 document.body.dataset.appMode=effectiveAppMode(appValue);
-document.body.dataset.mapMode=effectiveMapMode(mapValue);
+document.body.dataset.mapMode=effectiveMapMode(localStorage.getItem("mapColorMode")||"auto");
 renderGeoMap();
 }}
-["app_color_mode","map_color_mode"].forEach(name=>{{
+["app_color_mode"].forEach(name=>{{
 document.querySelectorAll(`[name=${{name}}]`).forEach(item=>item.addEventListener("change",previewModes));
 }});
 const mapProviders={{
@@ -1728,15 +1762,11 @@ cartoLight:{{url:"https://a.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}.pn
 label:"CARTO Positron",maxZoom:19}},
 cartoDark:{{url:"https://a.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}.png",
 label:"CARTO Dark Matter",maxZoom:19,effect:"map-style-dark"}},
-cartoVoyager:{{url:"https://a.basemaps.cartocdn.com/rastertiles/voyager/{{z}}/{{x}}/{{y}}.png",
-label:"CARTO Voyager",maxZoom:19}},
-hologram:{{url:"https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
-label:"Vue hologramme locale, style Tangram ES",maxZoom:19,effect:"map-style-cyber"}},
-socFlow:{{url:"https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
-label:"Vue SOC flux, style deck.gl",maxZoom:19,effect:"map-style-soc"}}
+maplibre3d:{{label:"MapLibre 3D plongeante",maxZoom:18,maplibre:true}}
 }};
 let mapPinchDistance=0;
 let mapDrag=null;
+let mapLibreInstance=null;
 const geoState={{lat:null,lon:null,markerLat:null,markerLon:null,zoom:16,route:[]}};
 function redrawGeoMap(){{
 const lat=document.getElementById("map-latitude")?.value;
@@ -1842,6 +1872,56 @@ geoState.markerLon=lon;
 geoState.zoom=Number(document.getElementById("map-zoom").value)||geoState.zoom||16;
 renderGeoMap();
 }}
+async function renderMapLibreMap(map,lat,lon,zoom,provider){{
+map.replaceChildren();
+map.className="geo-map maplibre-live";
+map.classList.toggle("map-night",document.body.dataset.mapMode==="night");
+try{{
+const module=await import("https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.mjs");
+if(mapLibreInstance){{mapLibreInstance.remove();mapLibreInstance=null;}}
+mapLibreInstance=new module.Map({{
+container:map,
+style:"https://demotiles.maplibre.org/style.json",
+center:[lon,lat],
+zoom:Math.min(zoom,provider.maxZoom||18),
+pitch:62,
+bearing:-28,
+attributionControl:false
+}});
+mapLibreInstance.addControl(new module.NavigationControl({{visualizePitch:true}}),"top-left");
+mapLibreInstance.on("load",()=>{{
+try{{
+if(mapLibreInstance.getSource("openmaptiles")&&!mapLibreInstance.getLayer("drop-3d-buildings")){{
+mapLibreInstance.addLayer({{
+id:"drop-3d-buildings",
+source:"openmaptiles",
+"source-layer":"building",
+type:"fill-extrusion",
+minzoom:14,
+paint:{{
+"fill-extrusion-color":document.body.dataset.mapMode==="night"?"#1f2937":"#94a3b8",
+"fill-extrusion-height":["coalesce",["get","render_height"],["get","height"],12],
+"fill-extrusion-base":["coalesce",["get","render_min_height"],["get","min_height"],0],
+"fill-extrusion-opacity":.72
+}}
+}});
+}}
+}}catch(error){{}}
+}});
+mapLibreInstance.on("moveend",()=>{{
+const center=mapLibreInstance.getCenter();
+geoState.lat=center.lat;geoState.lon=center.lng;geoState.zoom=Math.round(mapLibreInstance.getZoom());
+document.getElementById("map-zoom").value=String(geoState.zoom);
+}});
+document.getElementById("map-attribution").textContent=provider.label;
+document.getElementById("geo-map-status").textContent="Vue 3D MapLibre : "+lat.toFixed(5)+", "+lon.toFixed(5)+" · zoom "+zoom;
+}}catch(error){{
+map.className="geo-map";
+document.getElementById("geo-map-status").textContent="MapLibre indisponible, retour au rendu standard : "+error.message;
+document.getElementById("map-layer").value="standard";
+renderGeoMap();
+}}
+}}
 function renderGeoMap(){{
 if(geoState.lat===null||geoState.lon===null)return;
 let lat=Number(geoState.lat);const lon=Number(geoState.lon);
@@ -1851,6 +1931,9 @@ const provider=mapProviders[document.getElementById("map-layer").value]||mapProv
 const requestedZoom=Number(geoState.zoom)||15;
 const zoom=Math.min(requestedZoom,provider.maxZoom);
 geoState.zoom=zoom;document.getElementById("map-zoom").value=String(zoom);
+if(provider.maplibre){{renderMapLibreMap(map,lat,lon,zoom,provider);return;}}
+if(mapLibreInstance){{mapLibreInstance.remove();mapLibreInstance=null;}}
+map.className="geo-map";
 const n=2**zoom;
 const center=latLonToTile(lat,lon,zoom);
 const x=center.x,y=center.y;
@@ -1877,7 +1960,7 @@ marker.title=geoState.markerLat.toFixed(5)+", "+geoState.markerLon.toFixed(5);
 map.appendChild(marker);
 }}
 map.classList.toggle("map-night",document.body.dataset.mapMode==="night");
-map.classList.remove("map-style-dark","map-style-cyber","map-style-soc");
+map.classList.remove("map-style-dark");
 if(provider.effect)map.classList.add(provider.effect);
 drawRoute(map,x,y,zoom,width,height);
 document.getElementById("map-attribution").textContent=provider.label;
@@ -1899,6 +1982,14 @@ showGeoMap(lat,lon);
 window.addEventListener("DOMContentLoaded",()=>{{
 const map=document.getElementById("geo-map-frame");
 if(!map)return;
+const controls=document.querySelector(".map-ui");
+if(controls&&!document.getElementById("map-mode-cycle")){{
+const button=document.createElement("button");
+button.type="button";button.className="map-mode-button";button.id="map-mode-cycle";
+button.addEventListener("click",cycleMapMode);
+controls.insertBefore(button,controls.lastElementChild);
+}}
+setMapMode(localStorage.getItem("mapColorMode")||"auto");
 map.addEventListener("wheel",event=>{{
 event.preventDefault();
 adjustGeoZoom(event.deltaY<0?1:-1);
@@ -2250,7 +2341,7 @@ Je confirme respecter le périmètre autorisé et la législation applicable.</l
 <article class="dash-metric"><span>Appareils observes</span><strong>{exposure['asset_count']:02d}</strong><small>{exposure['service_count']} services indexes</small></article>
 <article class="dash-metric"><span>Historiques</span><strong>{history_count}</strong><small>sessions et resultats</small></article>
 <article class="dash-metric"><span>Rapports</span><strong>{len(list_reports())}</strong><small>exports disponibles</small></article>
-<article class="dash-metric"><span>Theme actif</span><strong>{escape(settings.theme)}</strong><small>{escape(settings.app_color_mode)} / carte {escape(settings.map_color_mode)}</small></article>
+<article class="dash-metric"><span>Theme actif</span><strong>{escape(settings.theme)}</strong><small>{escape(settings.app_color_mode)} / carte locale</small></article>
 </div>
 <article class="dash-tile dashboard-hero kill-zone" data-widget-id="kill-chain"><span>Parcours defensif</span>
 <p class="muted tile-detail">Collecter, transformer en donnee reutilisable, correler, puis restituer.</p>
@@ -3062,9 +3153,7 @@ placeholder="Longitude"></div><div class="geo-tool-row"><select id="map-layer" a
 <option value="topographic">Topographique / relief</option>
 <option value="cartoLight">CARTO clair</option>
 <option value="cartoDark">CARTO sombre</option>
-<option value="cartoVoyager">CARTO voyager</option>
-<option value="hologram">Hologramme cyber</option>
-<option value="socFlow">SOC / flux reseau</option>
+<option value="maplibre3d">Vue 3D plongeante</option>
 </select><select id="map-zoom" aria-label="Niveau de zoom">
 <option value="2">2</option><option value="3">3</option><option value="4">4</option>
 <option value="5">5</option><option value="6">6</option><option value="7">7</option>
@@ -3092,6 +3181,7 @@ document.getElementById('map-longitude').value)">AFFICHER</button>
 <div class="geo-map-shell"><div class="geo-map" id="geo-map-frame" role="img"
 aria-label="Carte centrée sur la position choisie"></div>
 <div class="map-ui" aria-label="Contrôles de carte">
+<button class="map-mode-button" id="map-mode-cycle" type="button" title="Mode carte" onclick="cycleMapMode()">◐</button>
 <button type="button" title="Zoom avant" onclick="adjustGeoZoom(1)">+</button>
 <button type="button" title="Recentrer sur le marqueur" onclick="recenterGeoMap()">@</button>
 <button type="button" title="Zoom arrière" onclick="adjustGeoZoom(-1)">-</button>
@@ -3102,8 +3192,7 @@ rel="noreferrer">contributeurs OpenStreetMap</a>. Relief :
 <a href="https://opentopomap.org/" target="_blank"
 rel="noreferrer">OpenTopoMap</a>. CARTO :
 <a href="https://carto.com/attributions" target="_blank"
-rel="noreferrer">attributions</a>. Les modes Hologramme et SOC sont des rendus
-locaux au-dessus des tuiles OSM.</p></div>
+rel="noreferrer">attributions</a>. Vue 3D : MapLibre GL JS avec rendu vectoriel local.</p></div>
 <div class="tab-panel{network_active}" data-panel="network">
 <div class="notice">La topologie affiche uniquement le resultat de cette session. Cliquez sur le cercle Reseau IP pour lancer ou forcer une mise a jour.</div>
 <div class="filter-row"><label class="check"><input id="topology-auto-refresh" type="checkbox"> Mise a jour automatique</label>
@@ -3516,11 +3605,7 @@ step="0.05" value="{settings.glass_opacity:.2f}">
 <label><input type="radio" name="app_color_mode" value="light"{" checked" if settings.app_color_mode == "light" else ""}><span>Clair</span></label>
 <label><input type="radio" name="app_color_mode" value="dark"{" checked" if settings.app_color_mode == "dark" else ""}><span>Sombre</span></label>
 </div></fieldset>
-<fieldset class="mode-slider"><legend>Mode carte</legend><div class="mode-track" data-mode-track="map" data-value="{settings.map_color_mode}">
-<label><input type="radio" name="map_color_mode" value="auto"{" checked" if settings.map_color_mode == "auto" else ""}><span>Auto</span></label>
-<label><input type="radio" name="map_color_mode" value="day"{" checked" if settings.map_color_mode == "day" else ""}><span>Jour</span></label>
-<label><input type="radio" name="map_color_mode" value="night"{" checked" if settings.map_color_mode == "night" else ""}><span>Nuit</span></label>
-</div></fieldset></div>
+</div>
 <div class="tab-panel" data-panel="behavior">
 <label>Langue<select name="language">
 <option value="fr"{" selected" if settings.language == "fr" else ""}>Français</option>
@@ -3548,12 +3633,13 @@ name="scan_timeout" value="{settings.scan_timeout}"></label>
 
     def _save_settings(self, data: dict[str, list[str]]) -> None:
         try:
+            previous_settings = load_settings()
             settings = Settings(
                 language=_field(data, "language", "fr"),
                 report_mode=_field(data, "report_mode", "ask"),
                 theme=_field(data, "theme", "core"),
                 app_color_mode=_field(data, "app_color_mode", "auto"),
-                map_color_mode=_field(data, "map_color_mode", "auto"),
+                map_color_mode=previous_settings.map_color_mode,
                 glass_effect=_checked(data, "glass_effect"),
                 glass_opacity=float(_field(data, "glass_opacity", "0.46")),
                 default_ports=_field(data, "default_ports", "1-1024"),
@@ -3589,10 +3675,13 @@ name="scan_timeout" value="{settings.scan_timeout}"></label>
         self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
         self.send_header(
             "Content-Security-Policy",
-            "default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; "
+            "default-src 'self'; style-src 'unsafe-inline' https://unpkg.com; "
+            "script-src 'unsafe-inline' https://unpkg.com; worker-src blob:; "
             "img-src 'self' data: https://tile.openstreetmap.org "
-            "https://*.tile.opentopomap.org https://*.basemaps.cartocdn.com; "
-            "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org; "
+            "https://*.tile.opentopomap.org https://*.basemaps.cartocdn.com "
+            "https://demotiles.maplibre.org blob:; "
+            "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org "
+            "https://unpkg.com https://demotiles.maplibre.org; "
             "frame-src https://www.openstreetmap.org",
         )
         self.end_headers()
