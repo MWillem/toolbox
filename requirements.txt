@@ -1,0 +1,2 @@
+qrcode[pil]>=7.4
+# Lecture QR optionnelle : pyzbar (nécessite aussi la bibliothèque système zbar).

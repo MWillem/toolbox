@@ -1,2 +1,14 @@
-*__pycache__/*
+__pycache__/
+*.py[cod]
+.venv/
+build/
+dist/
+*.egg-info/
 rapports/
+lab_payload/
+lab_workspace/
+missions/
+historique/
+donnees/
+.cybertoolbox.json
+.coverage

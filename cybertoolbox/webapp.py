@@ -1,0 +1,3736 @@
+from __future__ import annotations
+
+from dataclasses import asdict
+from html import escape
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import ipaddress
+import json
+from pathlib import Path
+import secrets
+import socket
+import time
+from datetime import datetime
+from typing import Any
+from urllib.parse import parse_qs, quote, urlparse
+import webbrowser
+
+from .context_info import local_context, weather_for_coordinates
+from .device_profile import build_device_profile
+from .exposure import exposure_inventory
+from .history import (
+    delete_all_history,
+    delete_history,
+    history_display_name,
+    list_history,
+    load_history,
+    rename_history,
+    save_history,
+)
+from .labs.crypto_basics import base64_decode, base64_encode, xor_decrypt, xor_encrypt
+from .labs.file_audit import audit_local_configuration, audit_path
+from .labs.hash_advanced import hash_generate, identify_hash
+from .labs.http_headers import analyze_headers, fetch_headers
+from .labs.local_lab import prepare_lab
+from .labs.log_analysis import analyze_log
+from .labs.network import discover_hosts, local_ipv4_network, scan_ports
+from .labs.hashing import hash_text
+from .labs.network_info import dns_lookup, inspect_tls
+from .labs.nfc_tools import nfc_security_lesson, parse_ndef_record, scan_nfc, write_nfc_text, write_nfc_url
+from .labs.passwords import analyze_password
+from .labs.payloads import analyze_payload_file
+from .labs.packet_observer import observe_packets
+from .labs.public_exposure import inspect_public_exposure
+from .labs.qr_tools import decode_qr_wifi, generate_qr_text, generate_qr_vcard, generate_qr_wifi, read_qr_from_file
+from .labs.script_analysis import analyze_script
+from .labs.system_audit import audit_system
+from .labs.cracking import crack_wpa2_demo, derive_wpa2_pmk
+from .labs.wireless import (
+    bluetooth_inventory,
+    local_device_identity,
+    mobile_operator_info,
+    wifi_scan,
+    wireless_diagnostics,
+)
+from .mission import (
+    create_mission_from_template,
+    delete_all_missions,
+    delete_mission,
+    list_missions,
+    mission_templates,
+    rename_mission,
+)
+from .reports import (
+    delete_all_reports,
+    delete_report,
+    list_reports,
+    read_report,
+    rename_report,
+    save_professional_report,
+)
+from .records import (
+    Artifact,
+    TimelineEvent,
+    delete_all_records,
+    delete_record,
+    generate_correlations_from_records,
+    list_records,
+    load_record,
+    record_display_name,
+    records_summary,
+    save_record,
+    save_recon_records,
+)
+from .settings import Settings, load_settings, save_settings
+
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+CSS = """
+:root{color-scheme:dark;--bg:#030609;--panel-rgb:8,12,15;--solid-panel:#0b1117;
+--glass-alpha:.46;--panel:rgba(var(--panel-rgb),var(--glass-alpha));
+--line:rgba(104,255,106,.28);--signal:#79ff3d;--accent:#38e8ff;
+--text:#f4f7fb;--muted:#b7c3d1;--danger:#ff4d59;--orange:#ff8a22;
+--glow:rgba(121,255,61,.16);--field:rgba(1,8,7,.52);--radius:8px}
+body[data-theme="core"]{--bg:#030609;--panel-rgb:8,12,15;
+--signal:#79ff3d;--accent:#38e8ff;--glow:rgba(121,255,61,.16);--field:rgba(1,8,7,.52)}
+body[data-theme="github"]{--bg:#0d1117;--panel-rgb:22,27,34;
+--signal:#58a6ff;--accent:#79c0ff;--glow:rgba(88,166,255,.2);--field:rgba(13,17,23,.78)}
+body[data-theme="violet"]{--bg:#050506;--panel-rgb:13,13,15;
+--signal:#d600a9;--accent:#51d414;--glow:rgba(214,0,169,.18);--field:rgba(7,16,13,.72)}
+body[data-theme="terminal"]{--bg:#020805;--panel-rgb:4,20,12;
+--signal:#39ff88;--accent:#b6ff3b;--glow:rgba(57,255,136,.18);--field:rgba(2,14,8,.8)}
+body[data-theme="ocean"]{--bg:#06121b;--panel-rgb:8,31,45;
+--signal:#00c8ff;--accent:#00ffd0;--glow:rgba(0,200,255,.2);--field:rgba(4,24,35,.8)}
+body[data-theme="amber"]{--bg:#110b03;--panel-rgb:32,21,7;
+--signal:#ffad22;--accent:#ffe066;--glow:rgba(255,173,34,.2);--field:rgba(25,15,4,.8)}
+body[data-app-mode="light"]{color-scheme:light;--bg:#f8fafc;--panel-rgb:255,255,255;--solid-panel:#ffffff;
+--text:#111827;--muted:#475569;--line:rgba(15,23,42,.16);--field:rgba(255,255,255,.82);
+--signal:#15803d;--accent:#0284c7;--glow:rgba(21,128,61,.12)}
+body[data-app-mode="light"]:before{color:rgba(2,132,199,.055)}
+body[data-app-mode="light"] .context-bar{background:rgba(255,255,255,.72);color:#166534}
+body[data-app-mode="light"] .card,body[data-app-mode="light"] .sidebar,
+body[data-app-mode="light"] input,body[data-app-mode="light"] select,body[data-app-mode="light"] textarea,
+body[data-app-mode="light"] .tab-button,body[data-app-mode="light"] .theme-swatch,
+body[data-app-mode="light"] .notice,body[data-app-mode="light"] .badge{box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 12px 32px rgba(15,23,42,.08)}
+body[data-app-mode="light"] pre,body[data-app-mode="light"] .loading-log{background:rgba(255,255,255,.82);color:#0f172a}
+body[data-app-mode="light"] .sc-wordmark{color:#111827;text-shadow:none}
+body[data-app-mode="light"] .sc-mark{border-color:#111827}
+body.no-glass{--panel:var(--solid-panel);--field:var(--solid-panel)}
+*{box-sizing:border-box}html{background:var(--bg)}body{min-height:100vh;margin:0;
+color:var(--text);font:15px/1.55 "Cascadia Code","JetBrains Mono",Consolas,monospace;
+background:linear-gradient(rgba(121,255,61,.04) 1px,transparent 1px),
+linear-gradient(90deg,rgba(56,232,255,.028) 1px,transparent 1px),
+repeating-linear-gradient(90deg,rgba(255,138,34,.045) 0 1px,transparent 1px 78px),
+var(--bg);background-size:30px 30px,30px 30px,auto,auto}
+body:before{content:"01001101 00110101 1010";position:fixed;inset:0;pointer-events:none;
+padding:18px;color:rgba(121,255,61,.09);font-size:10px;line-height:1.35;
+letter-spacing:.6em;word-spacing:1.4em;overflow:hidden;opacity:.9}
+body:after{content:"";position:fixed;inset:0;pointer-events:none;background:
+repeating-linear-gradient(0deg,transparent 0 3px,rgba(255,255,255,.018) 4px)}
+a{color:var(--signal);text-decoration:none}
+a:hover{color:var(--accent)}.shell{min-height:100vh;display:grid;
+grid-template-columns:minmax(0,1fr)}
+.sidebar{position:fixed;left:18px;top:18px;width:250px;height:calc(100vh - 36px);
+padding:24px 18px;border:1px solid var(--line);background:var(--panel);
+backdrop-filter:blur(30px) saturate(150%);box-shadow:0 20px 70px rgba(0,0,0,.44);
+transition:transform .25s ease,opacity .2s ease;z-index:20;overflow-y:auto;overflow-x:hidden;
+scrollbar-color:var(--signal) transparent}.shell.nav-collapsed .sidebar{
+transform:translateX(-102%);opacity:0;pointer-events:none}
+.brand{margin-bottom:30px;letter-spacing:.08em}.brand strong{display:block;
+color:var(--signal);font-size:18px}.brand small,.muted,.eyebrow{color:var(--muted)}
+.sc-wordmark{display:flex;align-items:center;gap:9px;color:#fff;font-size:28px;
+font-weight:800;letter-spacing:.14em;text-shadow:0 0 18px rgba(255,255,255,.24)}
+.sc-mark{display:inline-block;width:18px;height:23px;border:2px solid #fff;
+border-radius:14px 14px 14px 3px;transform:rotate(45deg);box-shadow:0 0 18px var(--glow)}
+.brand small{display:block;margin-top:8px;color:var(--signal)}
+.status{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:11px}
+.pulse{width:8px;height:8px;border-radius:50%;background:var(--signal);
+box-shadow:0 0 12px var(--signal);animation:pulse 1.8s infinite}
+@keyframes pulse{50%{opacity:.35}}nav{display:grid;gap:4px}nav a{padding:9px 10px;
+color:var(--muted);border-left:2px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+nav a:hover{color:var(--text);
+border-color:var(--signal);background:rgba(121,255,61,.08)}main{min-width:0;
+padding:72px clamp(18px,4vw,54px) 60px;transition:padding-left .25s ease}.shell:not(.nav-collapsed) main{
+padding-left:calc(286px + clamp(18px,4vw,54px))}.topline{display:grid;grid-template-columns:1fr auto;
+gap:16px;align-items:center;border-bottom:1px solid var(--line);
+margin-bottom:12px;padding-left:0;min-height:44px}.title-actions{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.title-copy{min-width:0}.top-actions{display:flex;gap:8px;align-items:center}.page-heading{margin:0;
+font-size:18px;line-height:1.25;letter-spacing:.04em;text-transform:uppercase}.page-heading:before{content:"// ";color:var(--signal)}
+h1{margin:0 0 12px;font-size:clamp(24px,4vw,42px);
+letter-spacing:-.04em}h1:before{content:"// ";color:var(--signal)}h2{color:
+var(--signal);font-size:16px;letter-spacing:.06em;text-transform:uppercase}
+.eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:11px}.grid{display:
+grid;grid-template-columns:repeat(12,1fr);gap:16px}.card{grid-column:span 4;
+position:relative;overflow:hidden;padding:20px;border:1px solid var(--line);
+background:var(--panel);backdrop-filter:blur(32px) saturate(155%);
+box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 18px 54px rgba(0,0,0,.42),0 0 28px var(--glow)}
+.no-glass .card,.no-glass .sidebar,
+.no-glass .loading-panel,.no-glass input,.no-glass select,.no-glass textarea,
+.no-glass .app,.no-glass .notice,.no-glass .tab-button,.no-glass .theme-swatch,
+.no-glass .badge,.no-glass pre{backdrop-filter:none}.card:before{
+content:"";position:absolute;width:70px;height:1px;right:0;top:0;background:
+var(--signal);box-shadow:0 0 12px var(--signal)}.card.wide{grid-column:span 8}
+.card.full{grid-column:1/-1}.metric{color:var(--accent);font-size:30px;font-weight:700}
+.app-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:14px;align-items:start}
+.app{min-height:142px;padding:12px;border:1px solid transparent;background:transparent;
+display:grid;justify-items:center;align-content:start;gap:8px;text-align:center}
+.app:before{content:attr(data-icon);display:grid;place-items:center;width:66px;height:66px;
+border:1px solid var(--line);border-radius:50%;background:var(--panel);backdrop-filter:blur(24px) saturate(145%);
+color:var(--muted);font-weight:900;font-size:14px;letter-spacing:.02em}
+.app strong{color:var(--text);font-size:13px}
+.app span{color:var(--muted);font-size:11px;line-height:1.35}.app:hover:before{border-color:var(--signal);
+color:#03100a;background:var(--signal)}
+.app:hover strong{color:var(--signal)}.app:hover{
+box-shadow:0 0 22px var(--glow)}.group-label{margin:22px 0 8px;color:var(--signal);
+letter-spacing:.12em;font-size:11px;text-transform:uppercase}.context-bar{display:flex;
+gap:18px;flex-wrap:wrap;padding:10px 14px;background:rgba(121,255,61,.1);
+border:1px solid var(--line);color:var(--signal);font-weight:700}
+.context-weather{border:0;background:transparent;color:var(--signal);padding:0;font:inherit;font-weight:700;
+clip-path:none;min-height:0;cursor:pointer}.context-weather:hover{background:transparent;color:var(--accent)}
+.map{width:100%;min-height:430px;border:1px solid var(--line);background:#09090b}
+.node{fill:#18181c;stroke:var(--accent);stroke-width:2}.node-risk{stroke:var(--orange)}
+.edge{stroke:#5c5c62;stroke-width:1}.map-label{fill:#eee;font-size:12px}
+.topology-action{position:relative;display:grid;place-items:center;width:220px;height:160px}
+.topology-action button,.topology-action .topology-main{width:124px;height:124px;border-radius:50%;clip-path:none;padding:0;
+display:grid;place-items:center;text-align:center;line-height:1.15;background:rgba(var(--panel-rgb),.9);
+color:var(--signal);border:3px solid var(--signal);box-shadow:0 0 26px var(--glow),inset 0 0 24px rgba(121,255,61,.08)}
+.topology-action small{display:block;color:var(--muted);font-size:8px;line-height:1.15;margin-top:4px}
+.topology-action button:hover{background:var(--signal);color:#03100a}
+.topology-menu{position:absolute;right:0;top:18px;display:grid;gap:6px;opacity:0;pointer-events:none;transition:.18s ease}
+.topology-action:hover .topology-menu,.topology-action:focus-within .topology-menu{opacity:1;pointer-events:auto}
+.topology-menu button,.topology-menu a{width:74px;height:auto;min-height:28px;border-radius:999px;clip-path:none;
+padding:5px 8px;font-size:10px;background:var(--panel);color:var(--text);border:1px solid var(--line)}
+.topology-detail{display:none;position:fixed;inset:0;z-index:90;place-items:center;padding:18px;background:rgba(0,0,0,.5);backdrop-filter:blur(12px)}
+.topology-detail:target{display:grid}.topology-detail .card{width:min(680px,100%);grid-column:auto}
+.badge{display:inline-block;padding:3px 7px;border:1px solid var(--line);background:var(--panel);
+backdrop-filter:blur(14px) saturate(130%);font-size:11px}
+.menu-toggle{position:fixed;left:22px;top:18px;z-index:40;width:44px;height:40px;padding:0;
+display:grid;place-items:center;font-size:22px;clip-path:none;background:var(--panel);
+backdrop-filter:blur(18px);color:var(--text);box-shadow:0 8px 28px rgba(0,0,0,.28)}
+.shell:not(.nav-collapsed) .menu-toggle{left:286px}.button,button{display:inline-block;border:1px solid var(--signal);padding:10px 15px;
+color:#03100a;background:var(--signal);font:inherit;font-weight:700;cursor:pointer;
+clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,0 100%)}
+.button:hover,button:hover{background:var(--accent);color:#03100a}form{display:grid;
+gap:14px}label{display:grid;gap:6px;color:var(--muted)}input,select,textarea{width:100%;
+border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(18px) saturate(130%);
+color:var(--text);padding:11px 12px;
+font:inherit;outline:none}input:focus,select:focus,textarea:focus{border-color:var(--signal)}
+input[type=checkbox]{width:auto;accent-color:var(--signal)}.check{display:flex;
+align-items:flex-start;gap:9px}.notice{padding:13px 15px;border-left:3px solid
+var(--signal);background:var(--panel);backdrop-filter:blur(18px) saturate(130%);margin-bottom:16px}.error{border-color:
+var(--danger);color:#ffdce1}.table-wrap{width:100%;overflow-x:auto}
+.page-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.page-actions a,.page-actions button{min-width:44px;min-height:40px;padding:8px 12px;border-radius:999px;
+clip-path:none}.page-actions .home-link{background:var(--signal);color:#03100a}.page-actions .back-button{
+background:var(--panel);color:var(--text);border-color:var(--line)}
+.result-modal{position:fixed;inset:0;z-index:80;display:grid;place-items:center;padding:18px;
+background:rgba(0,0,0,.48);backdrop-filter:blur(12px)}
+.result-panel{width:min(1120px,100%);max-height:88vh;overflow:auto;border:1px solid var(--line);
+border-radius:16px;background:rgba(var(--panel-rgb),calc(var(--glass-alpha) + .18));
+backdrop-filter:blur(34px) saturate(150%);box-shadow:0 28px 90px rgba(0,0,0,.58);padding:18px}
+.result-panel header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}
+.result-panel h2{margin:0}.result-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.result-actions form{display:inline-flex}.result-actions button,.result-actions a{border-radius:999px;clip-path:none}
+.dashboard-strip{grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
+.dashboard-widget{display:grid;gap:8px;min-height:118px;padding:16px;border:1px solid var(--line);
+border-radius:var(--radius);background:var(--panel);backdrop-filter:blur(24px) saturate(145%);
+color:var(--text);box-shadow:0 14px 34px rgba(0,0,0,.24)}
+.dashboard-widget:hover{border-color:var(--signal);box-shadow:0 0 24px var(--glow)}
+.dashboard-widget strong{font-size:24px;color:var(--accent)}.dashboard-widget span{color:var(--muted)}
+.dashboard-widget.compact strong{font-size:18px}.kill-zone{border-color:rgba(121,255,61,.42)}
+.kill-zone .app-grid{grid-template-columns:repeat(auto-fit,minmax(132px,1fr))}
+.dashboard-modal{position:fixed;inset:0;z-index:85;display:none;place-items:center;padding:18px;
+background:rgba(0,0,0,.46);backdrop-filter:blur(12px)}
+.dashboard-modal:target{display:grid}.dashboard-modal .result-panel{display:block}
+.icon-button{display:grid;place-items:center;width:42px;height:42px;padding:0;border-radius:50%;font-size:20px}
+.dashboard-board{grid-column:1/-1;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));
+gap:14px;align-content:start;width:min(100%,1260px);justify-self:center}
+.dash-tile{position:relative;display:grid;gap:8px;min-height:104px;padding:14px;border:1px solid var(--line);
+border-radius:var(--radius);background:var(--panel);backdrop-filter:blur(24px) saturate(145%);
+color:var(--text);box-shadow:0 14px 34px rgba(0,0,0,.24);overflow:hidden;align-self:start}
+.dash-tile:before{content:"";position:absolute;right:0;top:0;width:60px;height:1px;background:var(--signal);
+box-shadow:0 0 12px var(--signal)}
+.dash-tile.size-s{grid-column:span 1}.dash-tile.size-m{grid-column:span 2}.dash-tile.size-l{grid-column:span 3}
+.dash-tile.size-xl{grid-column:1/-1}.dash-tile.size-tall{grid-column:span 3;grid-row:span 2}
+.dash-tile strong{font-size:20px;line-height:1.18;color:var(--accent);overflow-wrap:anywhere}
+.dash-tile span,.dash-tile small{color:var(--muted)}.dash-tile .app-grid{grid-template-columns:repeat(auto-fit,minmax(98px,1fr))}
+.dash-tile.size-s .tile-detail,.dash-tile.size-s .tile-extra,.dash-tile.size-s .app-grid{display:none}.dash-tile.size-s small{font-size:10px}
+.dash-tile.size-m .tile-extra{display:none}.widget-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:auto;padding-top:6px}
+.widget-actions a{border-radius:999px;clip-path:none;padding:6px 9px;font-size:12px;line-height:1.1;white-space:nowrap}
+.dashboard-metrics{grid-column:1/-1;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.dash-metric{min-height:92px;padding:14px;border:1px solid var(--line);border-radius:var(--radius);
+background:var(--panel);backdrop-filter:blur(22px) saturate(140%);display:grid;align-content:space-between;gap:8px}
+.dash-metric span{color:var(--muted);font-size:12px}.dash-metric strong{color:var(--accent);font-size:26px;line-height:1}
+.dash-metric small{color:var(--muted);font-size:11px}.dashboard-hero{grid-column:1/-1}
+.dashboard-row{grid-column:1/-1;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;align-items:stretch}
+.dashboard-actions,.dashboard-activity,.dashboard-config{grid-column:auto}.dashboard-modules{grid-column:1/-1}
+.dashboard-actions{align-content:start}.dashboard-action-list{display:grid;gap:10px}.dashboard-action{
+display:flex;justify-content:space-between;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);
+border-radius:12px;background:rgba(var(--panel-rgb),.38);text-decoration:none;color:var(--text)}
+.dashboard-action strong{font-size:14px;color:var(--text);white-space:nowrap}.dashboard-action span{font-size:12px;min-width:0}
+.dashboard-action b{color:var(--signal);white-space:nowrap}
+.dashboard-scroll{position:relative;min-width:0}.dashboard-scroll-track{scrollbar-width:none}
+.dashboard-scroll-track::-webkit-scrollbar{display:none}.dashboard-scroll-nav{display:none;position:absolute;top:50%;
+transform:translateY(-50%);z-index:2;width:34px;height:34px;border-radius:50%;clip-path:none;padding:0;
+place-items:center;background:rgba(var(--panel-rgb),.94);color:var(--text);border-color:var(--line);
+box-shadow:0 8px 24px rgba(0,0,0,.28)}.dashboard-scroll-nav.left{left:4px}.dashboard-scroll-nav.right{right:4px}
+.dashboard-scroll.vertical .dashboard-scroll-nav.left{top:4px;left:50%;transform:translateX(-50%)}
+.dashboard-scroll.vertical .dashboard-scroll-nav.right{top:auto;right:auto;bottom:4px;left:50%;transform:translateX(-50%)}
+.dashboard-scroll.has-overflow .dashboard-scroll-nav{display:grid}.dashboard-kill-chain,.dashboard-module-rail{display:flex;
+gap:12px;justify-content:space-between;overflow-x:auto;overscroll-behavior-x:contain;padding:8px 0 4px}
+.dashboard-scroll.has-overflow .dashboard-kill-chain,.dashboard-scroll.has-overflow .dashboard-module-rail{
+justify-content:flex-start;padding:8px 42px 4px}.dashboard-kill-chain .app{
+flex:1 1 118px;max-width:150px;min-height:156px;padding:10px}.dashboard-scroll.has-overflow .dashboard-kill-chain .app{flex:0 0 118px}
+.dashboard-kill-chain .app strong{font-size:14px;line-height:1.2;
+overflow-wrap:normal;word-break:normal;hyphens:none}.dashboard-kill-chain .app span{font-size:11px}
+.dashboard-kill-chain .app:before{width:58px;height:58px}
+.dashboard-module-rail .app{flex:1 1 150px;max-width:190px;min-height:152px;padding:10px}
+.dashboard-scroll.has-overflow .dashboard-module-rail .app{flex:0 0 150px}.dashboard-module-rail .app:before{width:58px;height:58px}
+.dashboard-board .app strong{overflow-wrap:normal;word-break:normal;hyphens:none}
+.dashboard-actions .dashboard-scroll-track{max-height:360px;overflow-y:auto;overscroll-behavior-y:contain;padding:0 0 0}
+.dashboard-actions .dashboard-scroll.has-overflow .dashboard-scroll-track{padding:36px 0}
+.dashboard-row>.dash-tile{height:100%}.dashboard-row .tile-detail{min-height:0}.dashboard-board .metric-row{
+grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;height:100%;align-items:stretch}.dashboard-board .metric-card{
+padding:12px;min-height:108px;min-width:0;display:grid;align-content:space-between}.dashboard-board .metric-card strong{font-size:26px}.dashboard-board .metric-card span{font-size:12px;overflow-wrap:normal;word-break:normal}
+.dashboard-board .timeline{gap:6px;max-height:280px;overflow:auto;padding-right:4px}.dashboard-board .timeline-item{
+padding:8px 0 8px 12px}.dashboard-board .timeline-item strong{font-size:14px;line-height:1.35;color:var(--text)}
+.dashboard-board .timeline-item .muted{font-size:11px}.dashboard-board .status-badge{font-size:10px;padding:3px 7px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:10px;border-bottom:1px solid var(--line);text-align:left;
+vertical-align:top}th{color:var(--signal)}.key-table>tbody>tr>th{width:28%;
+min-width:150px}.data-table{min-width:520px}.data-table>thead>tr>th{white-space:nowrap;
+background:var(--panel)}.data-table>tbody>tr:nth-child(even){background:rgba(var(--panel-rgb),calc(var(--glass-alpha) + .08))}
+.data-table td,.data-table th{overflow-wrap:anywhere}.loading-overlay{position:fixed;
+inset:0;z-index:100;display:none;place-items:center;padding:20px;background:rgba(2,2,3,.88);
+backdrop-filter:blur(5px)}.loading-overlay.active{display:grid}.loading-panel{
+width:min(680px,100%);padding:24px;border:1px solid var(--signal);background:#08080a;
+box-shadow:0 0 48px rgba(214,0,169,.28)}.loading-head{display:flex;
+justify-content:space-between;gap:20px;color:var(--signal);font-weight:700}
+.loading-track{height:5px;margin:18px 0;background:#26262a;overflow:hidden}
+.loading-track:after{content:"";display:block;width:38%;height:100%;background:var(--accent);
+box-shadow:0 0 12px var(--accent);animation:scan 1.15s ease-in-out infinite}
+@keyframes scan{from{transform:translateX(-110%)}to{transform:translateX(285%)}}
+.loading-log{height:150px;margin:0;overflow:auto;border:1px solid var(--line);
+background:#020203;color:#d8d8dc;font-size:12px}.loading-log span{display:block;
+padding:3px 0}.loading-log span:before{content:"> ";color:var(--accent)}
+.tabs{display:flex;gap:8px;overflow-x:auto;margin-bottom:16px}.tab-button{
+background:var(--panel);backdrop-filter:blur(14px) saturate(130%);color:var(--muted);clip-path:none;border-color:var(--line)}
+.tab-button.active{color:#050506;background:var(--signal);border-color:var(--signal)}
+.tab-panel{display:none}.tab-panel.active{display:block}.switch{display:flex;
+align-items:center;justify-content:space-between;gap:16px;padding:12px 0;
+border-bottom:1px solid var(--line)}.switch input{position:absolute;opacity:0}
+.switch-track{width:62px;height:32px;padding:3px;border-radius:999px;background:#3a3a40;
+position:relative;transition:.2s}.switch-track:before{content:"☼";position:absolute;right:9px;top:5px;
+font-size:14px;color:#fff}.switch-track:after{content:"";display:block;width:26px;height:26px;
+border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 7px rgba(0,0,0,.28)}
+.switch input:checked+.switch-track{background:#1f2937}.switch input:checked+.switch-track:before{
+content:"☾";left:11px;right:auto}.switch input:checked+.switch-track:after{transform:translateX(30px)}
+.range-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}
+.range-row input{padding:0;accent-color:var(--signal)}
+.switch-track{background:#64748b}.switch-track:before{content:"OFF";right:8px;top:7px;
+font-size:10px;color:#fff;font-weight:800}.switch input:checked+.switch-track{background:var(--signal)}
+.switch input:checked+.switch-track:before{content:"ON";left:10px;right:auto;color:#03100a}
+.mode-slider{display:grid;gap:8px;margin:10px 0 14px}
+.mode-slider legend{color:var(--muted);padding:0}
+.mode-track{position:relative;display:grid;grid-template-columns:repeat(3,1fr);gap:4px;
+padding:4px;border:1px solid var(--line);border-radius:999px;background:var(--panel);
+backdrop-filter:blur(18px) saturate(130%);overflow:hidden}
+.mode-track input{position:absolute;opacity:0;pointer-events:none}
+.mode-track span{position:relative;z-index:2;display:grid;place-items:center;min-height:34px;
+border-radius:999px;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer}
+.mode-track:before{content:"";position:absolute;z-index:1;top:4px;bottom:4px;left:4px;
+width:calc((100% - 8px)/3);border-radius:999px;background:var(--signal);
+box-shadow:0 0 18px var(--glow);transition:transform .18s ease}
+.mode-track[data-value="light"]:before,.mode-track[data-value="day"]:before{transform:translateX(100%)}
+.mode-track[data-value="dark"]:before,.mode-track[data-value="night"]:before{transform:translateX(200%)}
+.mode-track input:checked+span{color:#06100a}
+.theme-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
+.theme-choice{position:relative}.theme-choice input{position:absolute;opacity:0}
+.theme-swatch{display:block;padding:14px;border:1px solid var(--line);background:var(--panel);
+backdrop-filter:blur(18px) saturate(130%);
+cursor:pointer}.theme-choice input:checked+.theme-swatch{border-color:var(--signal);
+box-shadow:0 0 20px var(--glow)}.geo-tools{display:grid;grid-template-columns:repeat(3,minmax(220px,1fr));
+gap:12px;margin:16px 0}.geo-tool{display:grid;gap:10px;padding:12px;border:1px solid var(--line);
+background:rgba(var(--panel-rgb),calc(var(--glass-alpha) + .08));backdrop-filter:blur(18px) saturate(130%)}
+.geo-tool h3{margin:0;color:var(--signal);font-size:12px;letter-spacing:.12em;text-transform:uppercase}
+.geo-tool-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.geo-tool-row.single{grid-template-columns:1fr}.geo-actions{display:flex;gap:10px;flex-wrap:wrap}
+.geo-actions button{flex:1;min-width:150px}.geo-map-shell{position:relative}.geo-map{width:100%;height:min(62vh,620px);
+border:1px solid var(--line);background:#0a0a0d}
+.map-ui{position:absolute;right:12px;top:12px;z-index:8;display:grid;gap:6px}
+.map-ui button{width:38px;height:38px;padding:0;display:grid;place-items:center}
+.map-mode-button{font-size:16px}
+.geo-map.maplibre-live .maplibregl-canvas{outline:none}
+.geo-map.maplibre-live.map-night .maplibregl-canvas{filter:brightness(.68) contrast(1.12) saturate(.75)}
+.map-night .map-tile{filter:invert(1) hue-rotate(175deg) saturate(.75) brightness(.72) contrast(1.05)}
+.map-style-dark .map-tile{filter:contrast(1.08) saturate(.82) brightness(.72)}
+.map-route{position:absolute;inset:0;z-index:4;pointer-events:none}
+.map-route path{fill:none;stroke:var(--accent);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;
+filter:drop-shadow(0 0 5px var(--accent))}
+.map-route-point{fill:var(--signal);stroke:#fff;stroke-width:2}
+.route-controls{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin:12px 0}
+.quick-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:14px;align-items:start}
+.quick-toggle{position:relative;display:grid;justify-items:center;gap:8px;padding:10px;border:1px solid transparent;
+background:transparent;cursor:pointer;text-align:center}
+.tool-picker{position:sticky;top:0;z-index:8}.tool-picker .quick-toggle{min-height:104px}
+[data-tool-section]{display:none}[data-tool-section].active{display:grid}
+.quick-toggle input{position:absolute;opacity:0}.quick-icon{display:grid;place-items:center;width:62px;height:62px;
+border:1px solid var(--line);border-radius:50%;background:var(--panel);backdrop-filter:blur(18px) saturate(130%);
+color:var(--muted);font-weight:900;letter-spacing:.02em}.quick-toggle strong{color:var(--text);font-size:13px}
+.quick-toggle span{color:var(--muted);font-size:11px;line-height:1.35}.quick-toggle:has(input:checked) .quick-icon{
+border-color:var(--signal);color:#03100a;background:var(--signal);box-shadow:0 0 18px var(--glow)}
+.quick-toggle:has(input:checked) strong,.quick-toggle.active strong{color:var(--signal)}
+.quick-toggle.active .quick-icon{border-color:var(--signal);color:#03100a;background:var(--signal);box-shadow:0 0 18px var(--glow)}
+.recon-fields{display:grid;
+grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.recon-fields [hidden]{display:none}
+.recon-result{display:grid;gap:14px}
+.recon-category{padding:14px;border:1px solid var(--line);background:var(--panel);
+backdrop-filter:blur(18px) saturate(130%)}.recon-category h3{margin:0 0 10px;color:var(--signal)}
+.scanner-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+.scanner-card{display:grid;gap:12px;border:1px solid var(--line);border-radius:var(--radius);
+padding:16px;background:var(--field)}.scanner-card h3{margin:0;color:var(--signal)}
+.scanner-card .tool-head{display:flex;align-items:center;gap:12px}.scanner-card .quick-icon{flex:0 0 auto}
+.scanner-card form{display:grid;gap:10px}.scanner-card .meta-row{display:flex;gap:8px;flex-wrap:wrap}
+.scanner-card .button-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.scanner-card button{width:100%}
+.device-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}
+.device-card{display:grid;gap:10px;border:1px solid var(--line);border-radius:var(--radius);
+padding:14px;background:var(--field)}.device-card h3{margin:0;color:var(--text);word-break:break-word}
+.device-card .device-meta{display:flex;gap:8px;flex-wrap:wrap}.device-card .device-actions{display:flex;gap:8px;flex-wrap:wrap}
+.device-card .device-actions a{border:1px solid var(--line);border-radius:999px;padding:7px 10px;text-decoration:none;color:var(--text)}
+.profile-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:14px}
+.profile-tabs{display:grid;gap:12px}.profile-section{border:1px solid var(--line);border-radius:var(--radius);
+background:var(--field);padding:12px}.profile-section h3{margin:0 0 8px;color:var(--signal)}
+.action-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.action-row a{padding:7px 10px;
+border:1px solid var(--line);border-radius:999px;background:rgba(var(--panel-rgb),.5)}
+.status-badge,.risk-badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);
+border-radius:999px;padding:4px 9px;font-size:11px;font-weight:900;text-transform:uppercase}
+.risk-badge[data-risk="attention"],.status-badge[data-level="attention"]{border-color:rgba(255,138,34,.55);color:var(--orange)}
+.risk-badge[data-risk="critique"],.status-badge[data-level="critique"]{border-color:rgba(255,77,89,.65);color:var(--danger)}
+.metric-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.metric-card{border:1px solid var(--line);border-radius:var(--radius);padding:14px;background:var(--field)}
+.metric-card strong{display:block;font-size:28px;color:var(--signal)}.metric-card span{color:var(--muted);font-size:12px}
+.timeline{display:grid;gap:10px}.timeline-item{border-left:2px solid var(--line);padding:8px 0 8px 14px}
+.timeline-item strong{display:block}.correlation-card{border:1px solid var(--line);border-radius:var(--radius);
+padding:12px;background:var(--field);display:grid;gap:8px}
+.filter-row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}.filter-row a{border:1px solid var(--line);
+border-radius:999px;padding:7px 10px;color:var(--text);text-decoration:none;background:var(--field)}
+.record-card{display:grid;gap:8px;border:1px solid var(--line);border-radius:var(--radius);padding:12px;background:var(--field)}
+.record-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.radar{position:relative;min-height:220px;border:1px solid var(--line);border-radius:50%;
+background:radial-gradient(circle,rgba(56,232,255,.18) 1px,transparent 2px),
+radial-gradient(circle,transparent 30%,rgba(121,255,61,.08) 31%,transparent 32%,transparent 60%,rgba(121,255,61,.08) 61%,transparent 62%);
+background-size:100% 100%;overflow:hidden}.radar:after{content:"";position:absolute;inset:50% 0 auto 50%;
+width:50%;height:2px;background:linear-gradient(90deg,var(--signal),transparent);transform-origin:left center;
+animation:radarSweep 4s linear infinite}@keyframes radarSweep{to{transform:rotate(360deg)}}
+.radar-dot{position:absolute;width:10px;height:10px;border-radius:50%;background:var(--signal);box-shadow:0 0 14px var(--signal)}
+.wireless-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+pre{max-width:100%;overflow:auto;
+white-space:pre-wrap;word-break:break-word;padding:16px;border:1px solid var(--line);
+background:var(--panel);backdrop-filter:blur(18px) saturate(130%);color:#c9fbe0}ul.clean{padding:0;list-style:none}ul.clean li{
+padding:9px 0;border-bottom:1px dashed var(--line)}.hero{max-width:850px;margin:6vh auto}
+.hero .card{padding:clamp(22px,5vw,46px)}
+.sidebar{border-radius:var(--radius)}
+nav a,.context-bar,.notice,.theme-swatch,pre,.table-wrap{border-radius:12px}
+.card,.loading-panel,.map,.geo-map{border-radius:var(--radius)}
+.app{border-radius:8px}.badge{border-radius:999px}
+.button,button,input,select,textarea{border-radius:10px;clip-path:none}
+button.danger{border-color:var(--danger);background:transparent;color:var(--danger)}
+button.danger:hover{background:var(--danger);color:#fff}
+.geo-map{position:relative;overflow:hidden;touch-action:none}
+.map-tile{position:absolute;width:256px;height:256px;max-width:none}
+.map-marker{position:absolute;left:50%;top:50%;z-index:5;width:22px;height:22px;
+transform:translate(-50%,-50%);border:4px solid #fff;border-radius:50%;
+background:var(--signal);box-shadow:0 0 0 8px var(--glow),0 0 22px #000}
+.data-actions{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
+.data-actions form{display:flex;gap:8px;align-items:end;flex:1;min-width:220px}
+.data-actions form.compact{flex:0 0 auto;min-width:0}
+.ownership{margin-top:34px;padding-top:16px;border-top:1px solid var(--line);
+color:var(--muted);font-size:11px}
+@media(max-width:900px){body{--glass-alpha:.92}.shell{grid-template-columns:1fr}
+.shell:not(.nav-collapsed) main{padding-left:18px;filter:blur(1px);pointer-events:none}
+.topline{padding-left:0}.sidebar{position:fixed;
+left:14px;top:14px;width:min(84vw,320px);height:calc(100vh - 28px);box-shadow:20px 0 60px rgba(0,0,0,.45);
+background:rgba(var(--panel-rgb),.96);backdrop-filter:blur(18px) saturate(130%)}
+.shell.nav-collapsed{grid-template-columns:1fr}.shell:not(.nav-collapsed) .menu-toggle{left:min(calc(84vw + 22px),342px);
+background:rgba(var(--panel-rgb),.98)}
+body[data-app-mode="light"] .sidebar,body[data-app-mode="light"] .menu-toggle{background:rgba(255,255,255,.98);
+color:#0f172a}
+body[data-app-mode="light"] .card,body[data-app-mode="light"] input,body[data-app-mode="light"] select,
+body[data-app-mode="light"] textarea,body[data-app-mode="light"] .notice,body[data-app-mode="light"] .tab-button,
+body[data-app-mode="light"] .theme-swatch,body[data-app-mode="light"] .quick-icon,
+body[data-app-mode="light"] .geo-tool,body[data-app-mode="light"] .recon-category{
+background:rgba(255,255,255,.96);color:#0f172a}
+body[data-app-mode="light"] .muted,body[data-app-mode="light"] label,
+body[data-app-mode="light"] .quick-toggle span,body[data-app-mode="light"] .app span{color:#334155}
+body[data-app-mode="light"] .quick-toggle strong,body[data-app-mode="light"] .app strong{color:#0f172a}
+.brand{margin-bottom:14px}
+nav{display:grid}.card,.card.wide{grid-column:span 6}}
+@media(max-width:1180px){.dashboard-row{grid-template-columns:repeat(2,minmax(0,1fr))}
+.dashboard-row .dashboard-activity:last-child{grid-column:1/-1}
+.dashboard-actions,.dashboard-activity{min-width:0}.dashboard-action{align-items:flex-start}
+.dashboard-action b{padding-top:2px}.dashboard-board .timeline{max-height:340px}}
+@media(max-width:600px){main{padding:76px 12px 40px}.topline{padding-left:0;gap:10px;grid-template-columns:1fr}.card,.card.wide,.card.full{
+grid-column:1/-1}.table-wrap{overflow-x:auto}
+.sidebar{padding:14px}.brand{margin-bottom:14px}.app-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+.app{min-height:118px;padding:8px}.app:before,.quick-icon{width:56px;height:56px;font-size:12px}
+.quick-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.quick-toggle{padding:8px}
+.dashboard-board{grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.dashboard-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.dashboard-hero,.dashboard-modules,.dashboard-config,
+.dash-tile.size-s,.dash-tile.size-m,.dash-tile.size-l,.dash-tile.size-xl,.dash-tile.size-tall{grid-column:1/-1}
+.dashboard-row{grid-template-columns:1fr}.dashboard-row .dashboard-activity:last-child{grid-column:auto}
+.dashboard-board .metric-row{grid-template-columns:1fr}
+.context-bar{font-size:12px;background:rgba(var(--panel-rgb),.96)}
+.geo-tools{grid-template-columns:1fr}.geo-tool-row{grid-template-columns:1fr}.geo-map{height:56vh}
+h1{font-size:26px}.card{padding:16px}}
+"""
+
+
+def _value(value: Any) -> str:
+    if isinstance(value, dict):
+        rows = "".join(
+            f"<tr><th>{escape(str(key))}</th><td>{_value(item)}</td></tr>"
+            for key, item in value.items()
+        )
+        return (
+            "<div class='table-wrap'><table class='key-table'>"
+            f"<tbody>{rows}</tbody></table></div>"
+        )
+    if isinstance(value, list):
+        if value and all(isinstance(item, dict) for item in value):
+            headers: list[str] = []
+            for item in value:
+                for key in item:
+                    name = str(key)
+                    if name not in headers:
+                        headers.append(name)
+            heading = "".join(f"<th>{escape(key)}</th>" for key in headers)
+            rows = "".join(
+                "<tr>"
+                + "".join(f"<td>{_value(item.get(key))}</td>" for key in headers)
+                + "</tr>"
+                for item in value
+            )
+            return (
+                "<div class='table-wrap'><table class='data-table'>"
+                f"<thead><tr>{heading}</tr></thead><tbody>{rows}</tbody></table></div>"
+            )
+        return (
+            "<ul class='clean'>"
+            + "".join(f"<li>{_value(item)}</li>" for item in value)
+            + "</ul>"
+            if value
+            else "<span class='muted'>Aucune donnée</span>"
+        )
+    return escape(str(value if value not in {"", None} else "-"))
+
+
+def _artifact_actions(category: str, item: dict[str, Any]) -> str:
+    actions: list[tuple[str, str]] = []
+    address = str(item.get("address") or item.get("ip") or "").strip()
+    ssid = str(item.get("ssid") or "").strip()
+    bluetooth = str(item.get("address") or item.get("mac") or item.get("name") or "").strip()
+    if category in {"network", "ports"} and address:
+        quoted = quote(address)
+        actions.append(("Profiler", f"/profile?target={quoted}"))
+        actions.append(("Scanner ports", f"/recon?subject={quoted}&source_ports=1"))
+        actions.append(("HTTP", f"/headers?url=http://{quoted}"))
+    if category == "wifi" and ssid:
+        actions.append(("Sans-fil", f"/wireless?artifact={quote(ssid)}"))
+    if category == "bluetooth" and bluetooth:
+        actions.append(("Sans-fil", f"/wireless?artifact={quote(bluetooth)}"))
+    if not actions:
+        return ""
+    links = "".join(
+        f'<a href="{escape(href)}">{escape(label)}</a>' for label, href in actions
+    )
+    return f"<div class='action-row'>{links}</div>"
+
+
+def _recon_result(value: dict[str, Any]) -> str:
+    categories = value.get("categories")
+    if not isinstance(categories, dict):
+        return _value(value)
+    view = str(value.get("view") or "category")
+    blocks = [
+        f"<p class='muted'>Vue : {escape(view)} · Durée : "
+        f"{escape(str(value.get('duration_seconds', '-')))} s</p>"
+    ]
+    for key, section in categories.items():
+        if not isinstance(section, dict):
+            continue
+        title = str(section.get("title") or key)
+        items = section.get("items", [])
+        description = str(section.get("description") or "")
+        limitations = section.get("limitations", [])
+        body = _value(items)
+        if view == "list" and isinstance(items, list):
+            body = "<ul class='clean'>" + "".join(
+                f"<li>{_value(item)}{_artifact_actions(key, item) if isinstance(item, dict) else ''}</li>"
+                for item in items
+            ) + "</ul>"
+        elif view == "table" and isinstance(items, list) and all(isinstance(item, dict) for item in items):
+            body += "".join(_artifact_actions(key, item) for item in items[:8])
+        blocks.append(
+            f"<section class='recon-category'><h3>{escape(title)}</h3>"
+            f"<p class='muted'>{escape(str(section.get('engine', '')))}</p>"
+            f"{f'<p>{escape(description)}</p>' if description else ''}"
+            f"{_value(limitations) if limitations else ''}{body}</section>"
+        )
+    suggestions = value.get("suggestions", [])
+    records = value.get("records")
+    if isinstance(records, dict):
+        blocks.append(
+            "<section class='recon-category'><h3>Données créées</h3>"
+            f"{_value(records)}</section>"
+        )
+    if suggestions:
+        blocks.append("<section class='recon-category'><h3>Suites possibles</h3>" + _value(suggestions) + "</section>")
+    return "<div class='recon-result'>" + "".join(blocks) + "</div>"
+
+
+def _records_metrics() -> str:
+    summary = records_summary()
+    return (
+        "<div class='metric-row'>"
+        f"<div class='metric-card'><strong>{summary['artifacts']}</strong><span>artefacts JSON</span></div>"
+        f"<div class='metric-card'><strong>{summary['events']}</strong><span>evenements timeline</span></div>"
+        f"<div class='metric-card'><strong>{summary['correlations']}</strong><span>correlations</span></div>"
+        "</div>"
+    )
+
+
+def _timeline_preview(limit: int = 5) -> str:
+    events = []
+    for path in list_records("event")[:limit]:
+        payload = load_record(path)
+        level = escape(str(payload.get("level", "info")))
+        events.append(
+            "<div class='timeline-item'>"
+            f"<span class='status-badge' data-level='{level}'>{level}</span>"
+            f"<strong>{escape(str(payload.get('description', 'Evenement')))}</strong>"
+            f"<span class='muted'>{escape(str(payload.get('created_at', '')).replace('T', ' '))}"
+            f" · {escape(str(payload.get('source', '')))}</span></div>"
+        )
+    if not events:
+        return "<p class='muted'>Aucun evenement enregistre pour le moment.</p>"
+    return "<div class='timeline'>" + "".join(events) + "</div>"
+
+
+def _record_filters() -> str:
+    return """<div class="filter-row">
+<a href="/reports">Tout</a><a href="/reports#timeline">Timeline</a>
+<a href="/reports#correlations">Corrélations</a><a href="/devices">Appareils</a>
+<a href="/scanner">Scanner</a></div>"""
+
+
+def _artifact_board(limit: int = 40) -> str:
+    cards = []
+    for path in list_records("artifact")[:limit]:
+        payload = load_record(path)
+        risk = escape(str(payload.get("risk", "info")))
+        kind = escape(str(payload.get("kind", "artifact")))
+        confidence = escape(str(payload.get("confidence", "faible")))
+        cards.append(
+            "<article class='record-card'>"
+            f"<span class='risk-badge' data-risk='{risk}'>{risk}</span>"
+            f"<strong>{escape(str(payload.get('title', 'Artefact')))}</strong>"
+            f"<span>{escape(str(payload.get('summary', '')))}</span>"
+            f"<span class='muted'>{kind} · confiance {confidence} · {escape(str(payload.get('created_at', '')).replace('T', ' '))}</span>"
+            "<div class='action-row'><a href='/reports#timeline'>Timeline</a>"
+            "<a href='/reports#correlations'>Corréler</a></div></article>"
+        )
+    if not cards:
+        return "<p class='muted'>Aucun artefact disponible.</p>"
+    return "<div class='record-grid'>" + "".join(cards) + "</div>"
+
+
+def _timeline_board(limit: int = 50) -> str:
+    rows = []
+    for path in list_records("event")[:limit]:
+        payload = load_record(path)
+        level = escape(str(payload.get("level", "info")))
+        event_type = escape(str(payload.get("event_type", "event")))
+        source = escape(str(payload.get("source", "")))
+        link = escape(str(payload.get("link") or "/reports"))
+        rows.append(
+            "<div class='timeline-item'>"
+            f"<span class='status-badge' data-level='{level}'>{level}</span>"
+            f"<strong>{escape(str(payload.get('description', 'Evenement')))}</strong>"
+            f"<span class='muted'>{escape(str(payload.get('created_at', '')).replace('T', ' '))} · {source} · {event_type}</span>"
+            f"<div class='action-row'><a href='{link}'>Ouvrir</a><a href='/reports#correlations'>Corréler</a></div></div>"
+        )
+    if not rows:
+        return "<p class='muted'>Aucun événement enregistre pour le moment.</p>"
+    return _record_filters() + "<div class='timeline' id='timeline'>" + "".join(rows) + "</div>"
+
+
+def _correlation_preview(limit: int = 5) -> str:
+    cards = []
+    for path in list_records("correlation")[:limit]:
+        payload = load_record(path)
+        severity = escape(str(payload.get("severity", "info")))
+        recommendations = payload.get("recommendations", [])
+        recommendation = recommendations[0] if isinstance(recommendations, list) and recommendations else ""
+        recommendation_html = (
+            f"<span class='muted'>{escape(str(recommendation))}</span>"
+            if recommendation else ""
+        )
+        cards.append(
+            "<div class='correlation-card'>"
+            f"<span class='risk-badge' data-risk='{severity}'>{severity}</span>"
+            f"<strong>{escape(str(payload.get('title', 'Correlation')))}</strong>"
+            f"<span>{escape(str(payload.get('hypothesis', '')))}</span>"
+            f"{recommendation_html}"
+            "</div>"
+        )
+    if not cards:
+        return "<p class='muted'>Aucune correlation generee pour le moment.</p>"
+    return "<div class='timeline'>" + "".join(cards) + "</div>"
+
+
+def _correlation_board(limit: int = 50) -> str:
+    cards = []
+    for path in list_records("correlation")[:limit]:
+        payload = load_record(path)
+        severity = escape(str(payload.get("severity", "info")))
+        confidence = escape(str(payload.get("confidence", "faible")))
+        evidence = payload.get("evidence", [])
+        recommendations = payload.get("recommendations", [])
+        evidence_html = _value(evidence[:4] if isinstance(evidence, list) else evidence)
+        recommendation_html = _value(recommendations[:3] if isinstance(recommendations, list) else recommendations)
+        cards.append(
+            "<article class='correlation-card'>"
+            f"<span class='risk-badge' data-risk='{severity}'>{severity}</span>"
+            f"<strong>{escape(str(payload.get('title', 'Correlation')))}</strong>"
+            f"<span>{escape(str(payload.get('hypothesis', '')))}</span>"
+            f"<span class='muted'>Confiance {confidence} · {escape(str(payload.get('created_at', '')).replace('T', ' '))}</span>"
+            f"<details><summary>Preuves</summary>{evidence_html}</details>"
+            f"<details><summary>Recommandations</summary>{recommendation_html}</details>"
+            "<div class='action-row'><a href='/reports'>Ajouter au rapport</a><a href='/devices'>Voir appareils</a></div>"
+            "</article>"
+        )
+    if not cards:
+        return "<p class='muted'>Aucune corrélation générée pour le moment.</p>"
+    return _record_filters() + "<div class='record-grid' id='correlations'>" + "".join(cards) + "</div>"
+
+
+def _device_inventory() -> list[dict[str, Any]]:
+    devices: dict[str, dict[str, Any]] = {}
+    exposure = exposure_inventory()
+    for address, asset in exposure.get("assets", {}).items():
+        devices[address] = {
+            "address": address,
+            "title": str(asset.get("label") or address),
+            "kind": "Appareil réseau",
+            "confidence": "moyenne",
+            "risk": "attention" if asset.get("findings") else "info",
+            "services": asset.get("services", []),
+            "last_seen": str(asset.get("last_seen", "")),
+            "source": "historique ports",
+            "findings": asset.get("findings", []),
+        }
+    for path in list_records("artifact"):
+        payload = load_record(path)
+        if payload.get("kind") not in {"device", "device_profile"}:
+            continue
+        data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
+        address = str(payload.get("value") or data.get("address") or data.get("ip") or payload.get("title") or "")
+        if not address:
+            continue
+        current = devices.setdefault(address, {"address": address, "services": [], "findings": []})
+        services = data.get("services", current.get("services", []))
+        current.update({
+            "title": str(payload.get("title") or address),
+            "kind": str(data.get("device_type") or "Appareil observé"),
+            "confidence": str(payload.get("confidence") or current.get("confidence") or "faible"),
+            "risk": str(payload.get("risk") or current.get("risk") or "info"),
+            "services": services if isinstance(services, list) else current.get("services", []),
+            "last_seen": str(payload.get("created_at") or current.get("last_seen") or ""),
+            "source": str(payload.get("source") or current.get("source") or "artifact"),
+        })
+    return sorted(devices.values(), key=lambda item: str(item.get("last_seen", "")), reverse=True)
+
+
+def _device_cards() -> str:
+    cards = []
+    for device in _device_inventory():
+        address = str(device.get("address") or "")
+        services = device.get("services", [])
+        service_count = len(services) if isinstance(services, list) else 0
+        risk = escape(str(device.get("risk") or "info"))
+        confidence = escape(str(device.get("confidence") or "faible"))
+        quoted = quote(address)
+        cards.append(
+            "<article class='device-card'>"
+            f"<div><h3>{escape(str(device.get('title') or address))}</h3>"
+            f"<span class='muted'>{escape(address)}</span></div>"
+            f"<div class='device-meta'><span class='risk-badge' data-risk='{risk}'>{risk}</span>"
+            f"<span class='status-badge'>{confidence}</span><span class='badge'>{service_count} services</span></div>"
+            f"<p class='muted'>Dernière activité : {escape(str(device.get('last_seen') or '-'))}</p>"
+            f"<p>{escape(str(device.get('kind') or 'Appareil'))}</p>"
+            f"<div class='device-actions'><a href='/profile?target={quoted}'>Voir fiche</a>"
+            f"<a href='/recon?subject={quoted}&target={quoted}&source_ports=1'>Scanner ports</a>"
+            f"<a href='/reports'>Corréler</a></div></article>"
+        )
+    if not cards:
+        return "<p class='muted'>Aucun appareil conservé pour le moment. Lance un scan réseau ou ports avec conservation.</p>"
+    return "<div class='device-grid'>" + "".join(cards) + "</div>"
+
+
+def _profile_result(value: dict[str, Any]) -> str:
+    summary = {
+        "Adresse": value.get("address", "-"),
+        "Nom": value.get("hostname", "-"),
+        "Type probable": value.get("device_type", "-"),
+        "Confiance": value.get("confidence", "faible"),
+        "Fabricant": value.get("manufacturer", "-") or "-",
+        "MAC": value.get("mac_address", "-") or "-",
+    }
+    actions = ""
+    address = str(value.get("address") or value.get("target") or "")
+    if address:
+        quoted = quote(address)
+        actions = (
+            "<div class='action-row'>"
+            f"<a href='/recon?subject={quoted}&target={quoted}&source_ports=1'>Scanner ports</a>"
+            f"<a href='/headers?url=http://{quoted}'>HTTP passif</a>"
+            "<a href='/reports'>Voir timeline/corrélations</a></div>"
+        )
+    sections = [
+        ("Résumé", _value(summary)),
+        ("Services", _value(value.get("services", []))),
+        ("Indices utilisés", _value(value.get("evidence", []))),
+        ("Noms observés", _value(value.get("name_observations", []))),
+        ("Corrélations", _value(value.get("correlations", []))),
+        ("Limites", _value(value.get("limitations", []))),
+    ]
+    blocks = "".join(
+        f"<section class='profile-section'><h3>{escape(title)}</h3>{body}</section>"
+        for title, body in sections
+    )
+    return f"<div class='profile-summary'>{_records_metrics()}</div><div class='profile-tabs'>{blocks}</div>{actions}"
+
+
+def _wireless_result(value: dict[str, Any]) -> str:
+    if "networks" in value:
+        networks = value.get("networks", [])
+        intro = _value({
+            "moteur": value.get("engine", "-"),
+            "disponible": value.get("available", False),
+            "description": value.get("description", ""),
+        })
+        cards = []
+        if isinstance(networks, list):
+            for item in networks:
+                if not isinstance(item, dict):
+                    continue
+                ssid = str(item.get("ssid") or item.get("name") or "Reseau masque")
+                signal = str(item.get("signal") or item.get("rssi") or "-")
+                security = str(item.get("security") or "inconnu")
+                risk = "attention" if security.lower() in {"open", "ouvert", "none", "aucun"} else "info"
+                cards.append(
+                    "<article class='record-card'>"
+                    f"<span class='risk-badge' data-risk='{risk}'>{escape(risk)}</span>"
+                    f"<strong>{escape(ssid)}</strong>"
+                    f"<span class='muted'>Signal {escape(signal)} · canal {escape(str(item.get('channel', '-')))} · {escape(security)}</span>"
+                    f"{_value(item)}"
+                    "<div class='action-row'><a href='/map'>Ajouter a la carte</a><a href='/reports#correlations'>Correler</a></div>"
+                    "</article>"
+                )
+        return intro + "<h3>Wi-Fi Analyzer</h3>" + ("<div class='record-grid'>" + "".join(cards) + "</div>" if cards else "<p class='muted'>Aucun reseau affiche.</p>") + _value(value.get("limitations", []))
+    if "items" in value:
+        items = value.get("items", [])
+        dots = []
+        cards = []
+        if isinstance(items, list):
+            for index, item in enumerate(items[:12]):
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name") or item.get("alias") or item.get("address") or "Bluetooth inconnu")
+                left = 18 + (index * 29) % 64
+                top = 20 + (index * 37) % 58
+                dots.append(f"<span class='radar-dot' style='left:{left}%;top:{top}%'></span>")
+                cards.append(
+                    "<article class='record-card'>"
+                    "<span class='risk-badge'>proximite</span>"
+                    f"<strong>{escape(name)}</strong>{_value(item)}"
+                    "<div class='action-row'><a href='/reports#timeline'>Timeline</a><a href='/reports#correlations'>Correler</a></div>"
+                    "</article>"
+                )
+        intro = _value({
+            "moteur": value.get("engine", "-"),
+            "disponible": value.get("available", False),
+            "description": value.get("description", ""),
+        })
+        return intro + "<h3>Bluetooth Radar</h3><div class='wireless-grid'><div class='radar'>" + "".join(dots) + "</div><div class='record-grid'>" + ("".join(cards) or "<p class='muted'>Aucun appareil affiche.</p>") + "</div></div>" + _value(value.get("limitations", []))
+    return _value(value)
+
+
+def _packet_result(value: dict[str, Any]) -> str:
+    packets = value.get("packets", [])
+    stats = value.get("statistics", {})
+    timeline = value.get("timeline", [])
+    packet_cards = []
+    if isinstance(packets, list):
+        for packet in packets[:20]:
+            if not isinstance(packet, dict):
+                continue
+            packet_cards.append(
+                "<article class='record-card'>"
+                f"<span class='status-badge'>{escape(str(packet.get('protocol', '')))}</span>"
+                f"<strong>{escape(str(packet.get('summary', 'Paquet observe')))}</strong>"
+                f"<span class='muted'>{escape(str(packet.get('direction', '')))} · "
+                f"{escape(str(packet.get('source_port', '-')))} -> {escape(str(packet.get('destination_port', '-')))}</span>"
+                f"{_value({'flags': packet.get('flags', []), 'raw': packet.get('raw', '')})}"
+                "</article>"
+            )
+    timeline_html = _value(timeline if isinstance(timeline, list) else [])
+    packet_html = "".join(packet_cards) or "<p class='muted'>Aucun paquet reconnu.</p>"
+    return (
+        "<div class='profile-tabs'>"
+        f"<section class='profile-section'><h3>Statistiques</h3>{_value(stats)}</section>"
+        f"<section class='profile-section'><h3>Timeline humaine</h3>{timeline_html}</section>"
+        "<section class='profile-section'><h3>Paquets récents</h3>"
+        f"<div class='record-grid'>{packet_html}</div></section>"
+        f"<section class='profile-section'><h3>Limites</h3>{_value(value.get('limitations', []))}</section>"
+        "</div>"
+    )
+
+
+def _public_exposure_result(value: dict[str, Any]) -> str:
+    resources = value.get("resources", [])
+    resource_cards = []
+    if isinstance(resources, list):
+        for item in resources[:40]:
+            if not isinstance(item, dict):
+                continue
+            title = item.get("name") or item.get("url") or item.get("type") or "Ressource"
+            detail = item.get("url") or item.get("type") or item.get("size") or ""
+            resource_cards.append(
+                "<article class='record-card'>"
+                f"<span class='status-badge'>{escape(str(value.get('kind', 'public')))}</span>"
+                f"<strong>{escape(str(title))}</strong>"
+                f"<span class='muted'>{escape(str(detail))}</span>"
+                "</article>"
+            )
+    resource_html = "".join(resource_cards) or "<p class='muted'>Aucune ressource listee.</p>"
+    preview = escape(str(value.get("preview", "")))
+    preview_html = f"<pre>{preview}</pre>" if preview else "<p class='muted'>Aucun apercu texte.</p>"
+    return (
+        "<div class='profile-tabs'>"
+        f"<section class='profile-section'><h3>Constats</h3>{_value(value.get('findings', []))}</section>"
+        f"<section class='profile-section'><h3>Metadonnees</h3>{_value(value.get('metadata', {}))}</section>"
+        f"<section class='profile-section'><h3>Ressources publiques</h3><div class='record-grid'>{resource_html}</div></section>"
+        f"<section class='profile-section'><h3>Apercu</h3>{preview_html}</section>"
+        f"<section class='profile-section'><h3>Recommandations</h3>{_value(value.get('recommendations', []))}</section>"
+        f"<section class='profile-section'><h3>Limites</h3>{_value(value.get('limitations', []))}</section>"
+        "</div>"
+    )
+
+
+def _qr_result(value: dict[str, Any]) -> str:
+    preview = value.get("preview", "")
+    preview_html = f"<pre>{escape(str(preview))}</pre>" if preview else "<p class='muted'>Aucun apercu.</p>"
+    return (
+        "<div class='profile-tabs'>"
+        f"<section class='profile-section'><h3>Contenu</h3>{_value(value.get('content', {}))}</section>"
+        f"<section class='profile-section'><h3>Apercu</h3>{preview_html}</section>"
+        f"<section class='profile-section'><h3>Risque</h3>{_value(value.get('risk', {}))}</section>"
+        f"<section class='profile-section'><h3>Limites</h3>{_value(value.get('limitations', []))}</section>"
+        "</div>"
+    )
+
+
+def _nfc_result(value: dict[str, Any]) -> str:
+    return (
+        "<div class='profile-tabs'>"
+        f"<section class='profile-section'><h3>Resultat</h3>{_value(value.get('result', {}))}</section>"
+        f"<section class='profile-section'><h3>Historique</h3>{_value(value.get('history', []))}</section>"
+        f"<section class='profile-section'><h3>Permissions</h3>{_value(value.get('permissions', []))}</section>"
+        f"<section class='profile-section'><h3>Limites</h3>{_value(value.get('limitations', []))}</section>"
+        "</div>"
+    )
+
+
+def _save_wireless_records(result: dict[str, Any], action: str) -> dict[str, int]:
+    if action == "wifi":
+        categories = {
+            "wifi": {
+                "title": "Wi-Fi Analyzer",
+                "engine": str(result.get("engine", "")),
+                "items": result.get("networks", []),
+            }
+        }
+    elif action == "bluetooth":
+        categories = {
+            "bluetooth": {
+                "title": "Bluetooth Radar",
+                "engine": str(result.get("engine", "")),
+                "items": result.get("items", []),
+            }
+        }
+    else:
+        return {"artifacts": 0, "events": 0, "correlations": 0}
+    saved = save_recon_records(categories, subject=f"{action}-local", scope="local_authorized")
+    return {key: len(saved[key]) for key in ("artifacts", "events", "correlations")}
+
+
+def _save_packet_records(result: dict[str, Any]) -> dict[str, int]:
+    packets = result.get("packets", [])
+    stats = result.get("statistics", {})
+    packet_count = len(packets) if isinstance(packets, list) else 0
+    artifact = Artifact(
+        kind="packet_observation",
+        source="packet_observer",
+        title="Observation trafic",
+        summary=f"{packet_count} ligne(s) de trafic analysee(s) en mode pedagogique.",
+        value=str(packet_count),
+        confidence="moyenne" if packet_count else "faible",
+        risk="info",
+        tags=["traffic", "packet", "timeline"],
+        data={"statistics": stats, "packets": packets[:50] if isinstance(packets, list) else []},
+    )
+    save_record(artifact)
+    events = 0
+    for event in result.get("timeline", [])[:50]:
+        if not isinstance(event, dict):
+            continue
+        save_record(
+            TimelineEvent(
+                source="packet_observer",
+                event_type=str(event.get("type") or "packet").lower(),
+                description=str(event.get("description") or "Observation trafic"),
+                level=str(event.get("level") or "info"),
+                artifact_id=artifact.id,
+                link="/tools",
+            )
+        )
+        events += 1
+    return {"artifacts": 1, "events": events, "correlations": 0}
+
+
+def _save_public_exposure_record(result: dict[str, Any]) -> dict[str, int]:
+    findings = result.get("findings", [])
+    resources = result.get("resources", [])
+    finding_count = len(findings) if isinstance(findings, list) else 0
+    resource_count = len(resources) if isinstance(resources, list) else 0
+    risk = "attention" if result.get("directory_listing") or resource_count else "info"
+    artifact = Artifact(
+        kind="public_exposure",
+        source="public_exposure_viewer",
+        title=str(result.get("target") or "Exposition publique"),
+        summary=f"{resource_count} ressource(s) publique(s), {finding_count} constat(s).",
+        value=str(result.get("target") or ""),
+        confidence="moyenne",
+        risk=risk,
+        tags=["public", "exposure", str(result.get("kind") or "resource")],
+        data=result,
+    )
+    save_record(artifact)
+    save_record(
+        TimelineEvent(
+            source="public_exposure_viewer",
+            event_type="public_exposure",
+            description=artifact.summary,
+            level=risk,
+            artifact_id=artifact.id,
+            link="/exposure",
+        )
+    )
+    return {"artifacts": 1, "events": 1, "correlations": 0}
+
+
+def _save_tool_record(kind: str, title: str, result: dict[str, Any], risk: str = "info") -> dict[str, int]:
+    artifact = Artifact(
+        kind=kind,
+        source="tools",
+        title=title,
+        summary=str(result.get("summary") or title),
+        value=str(result.get("value") or result.get("content", {}).get("data", ""))[:240],
+        confidence="moyenne",
+        risk=risk,
+        tags=["tool", kind],
+        data=result,
+    )
+    save_record(artifact)
+    save_record(
+        TimelineEvent(
+            source="tools",
+            event_type=kind,
+            description=artifact.summary,
+            level=risk,
+            artifact_id=artifact.id,
+            link="/tools",
+        )
+    )
+    return {"artifacts": 1, "events": 1, "correlations": 0}
+
+
+def _url_risk(value: str) -> dict[str, str]:
+    if not value.startswith(("http://", "https://")):
+        return {"level": "info", "reason": "Contenu non URL ou URL non reconnue."}
+    parsed = urlparse(value)
+    if parsed.scheme == "http":
+        return {"level": "attention", "reason": "URL HTTP non chiffree."}
+    if parsed.hostname and parsed.hostname.endswith(".invalid"):
+        return {"level": "info", "reason": "Domaine de demonstration non routable."}
+    return {"level": "info", "reason": "URL HTTPS. Verifier le domaine avant ouverture."}
+
+
+def _qr_payload(data: dict[str, list[str]]) -> dict[str, Any]:
+    mode = _field(data, "qr_mode", "text")
+    if mode == "text":
+        content = _field(data, "qr_text")
+        preview = generate_qr_text(content)
+        kind = "texte"
+    elif mode == "url":
+        content = _field(data, "qr_text")
+        if not content.startswith(("http://", "https://")):
+            raise ValueError("Une URL QR doit commencer par http:// ou https://.")
+        preview = generate_qr_text(content)
+        kind = "url"
+    elif mode == "wifi":
+        ssid = _field(data, "qr_ssid")
+        security = _field(data, "qr_security", "WPA")
+        password = _field(data, "qr_password")
+        content = f"WIFI:T:{security.upper()};S:{ssid};P:{password};;"
+        preview = generate_qr_wifi(ssid, password, security)
+        kind = "wifi"
+    elif mode == "contact":
+        name = _field(data, "qr_name")
+        phone = _field(data, "qr_phone")
+        email = _field(data, "qr_email")
+        content = f"vCard: {name} {phone} {email}".strip()
+        preview = generate_qr_vcard(name, phone, email)
+        kind = "contact"
+    elif mode == "mission":
+        content = "recon-sc://mission?name=" + quote(_field(data, "qr_text", "mission"))
+        preview = generate_qr_text(content)
+        kind = "mission recon SC"
+    elif mode == "note":
+        content = "NOTE:" + _field(data, "qr_text")
+        preview = generate_qr_text(content)
+        kind = "note"
+    elif mode == "lab_payload":
+        content = "https://example.invalid/recon-sc/lab-payload"
+        preview = generate_qr_text(content)
+        kind = "payload pedagogique inoffensif"
+    else:
+        raise ValueError("Mode QR inconnu.")
+    return {
+        "mode": "qr_tool",
+        "summary": f"QR Code genere: {kind}",
+        "content": {"type": kind, "data": content},
+        "preview": preview,
+        "risk": _url_risk(content),
+        "limitations": [
+            "Le QR masque son contenu avant lecture : verifier le domaine avant ouverture.",
+            "Les payloads generes ici sont pedagogiques et inoffensifs.",
+            "Aucune donnee n'est envoyee vers Internet pour generer ce QR.",
+        ],
+    }
+
+
+def _nfc_payload(data: dict[str, list[str]]) -> dict[str, Any]:
+    mode = _field(data, "nfc_mode", "scan")
+    value = _field(data, "value")
+    if mode == "scan":
+        result = scan_nfc(int(_field(data, "nfc_timeout", "5") or "5"))
+        summary = "Scan NFC local."
+    elif mode == "parse_hex":
+        cleaned = value.replace(" ", "").replace(":", "")
+        if not cleaned:
+            raise ValueError("Indiquez des donnees NDEF hexadecimales.")
+        result = parse_ndef_record(bytes.fromhex(cleaned))
+        summary = "NDEF decode en mode lab."
+    elif mode == "write_text":
+        result = {"written": write_nfc_text(value), "type": "text", "value": value}
+        summary = "Ecriture NFC texte demandee."
+    elif mode == "write_url":
+        result = {"written": write_nfc_url(value), "type": "url", "value": value}
+        summary = "Ecriture NFC URL demandee."
+    elif mode == "write_mission":
+        mission = "recon-sc://mission?name=" + quote(value or "mission")
+        result = {"written": write_nfc_text(mission), "type": "mission recon SC", "value": mission}
+        summary = "Ecriture NFC mission demandee."
+    elif mode == "lesson":
+        result = {"lesson": nfc_security_lesson()}
+        summary = "Lecon securite NFC."
+    else:
+        raise ValueError("Mode NFC inconnu.")
+    return {
+        "mode": "nfc_tool",
+        "summary": summary,
+        "result": result,
+        "history": [
+            {
+                "source": "nfc",
+                "type": mode,
+                "description": summary,
+                "level": "info",
+            }
+        ],
+        "permissions": [
+            "Mobile/Termux : installer Termux:API et autoriser NFC si l'appareil le propose.",
+            "Linux : lecteur compatible libnfc et permissions udev selon le materiel.",
+            "Windows/macOS : support automatique limite, utiliser le SDK du lecteur si necessaire.",
+        ],
+        "limitations": [
+            "Aucun clonage d'UID, emulation de badge ou contournement de controle d'acces.",
+            "Ecriture possible uniquement avec un outil local compatible et un tag autorise.",
+            "Mode lab recommande pour les donnees NDEF hexadecimales de demonstration.",
+        ],
+    }
+
+
+def _save_records_report(title: str = "Synthese recon SC") -> Path:
+    artifacts = [load_record(path) for path in list_records("artifact")[:80]]
+    events = [load_record(path) for path in list_records("event")[:80]]
+    correlations = [load_record(path) for path in list_records("correlation")[:80]]
+
+    def bullet(items: list[str]) -> str:
+        return "\n".join(f"- {item}" for item in items) or "- Aucun element."
+
+    artifact_lines = [
+        f"{item.get('title', 'Artefact')} | {item.get('kind', '')} | {item.get('risk', 'info')} | {item.get('summary', '')}"
+        for item in artifacts
+    ]
+    event_lines = [
+        f"{item.get('created_at', '')} | {item.get('level', 'info')} | {item.get('description', '')}"
+        for item in events
+    ]
+    finding_lines = []
+    recommendation_lines = []
+    for item in correlations:
+        finding_lines.append(
+            f"{item.get('title', 'Correlation')} | {item.get('severity', 'info')} | {item.get('hypothesis', '')}"
+        )
+        recommendations = item.get("recommendations", [])
+        if isinstance(recommendations, list):
+            recommendation_lines.extend(str(entry) for entry in recommendations)
+    recommendation_lines = list(dict.fromkeys(recommendation_lines))
+    return save_professional_report(
+        title,
+        "Donnees locales conservees dans recon SC, collectees sur perimetre autorise.",
+        (
+            f"Synthese generee depuis {len(artifacts)} artefact(s), "
+            f"{len(events)} evenement(s) timeline et {len(correlations)} correlation(s)."
+        ),
+        [
+            {
+                "severity": str(item.get("severity", "information")),
+                "title": str(item.get("title", "Correlation")),
+                "evidence": "; ".join(str(e) for e in item.get("evidence", [])[:4])
+                if isinstance(item.get("evidence", []), list) else str(item.get("evidence", "")),
+                "impact": str(item.get("hypothesis", "A evaluer.")),
+            }
+            for item in correlations
+        ],
+        recommendation_lines or ["Maintenir la collecte et documenter les observations utiles."],
+        (
+            "Rapport genere automatiquement depuis les donnees locales. "
+            "Les hypotheses doivent etre validees manuellement avant presentation finale.\n\n"
+            "Artefacts:\n" + bullet(artifact_lines[:40]) + "\n\nTimeline:\n" + bullet(event_lines[:40]) +
+            "\n\nCorrelations:\n" + bullet(finding_lines[:40])
+        ),
+    )
+
+
+def _field(data: dict[str, list[str]], name: str, default: str = "") -> str:
+    return data.get(name, [default])[0].strip()
+
+
+def _checked(data: dict[str, list[str]], name: str) -> bool:
+    return _field(data, name) in {"1", "on", "true", "yes"}
+
+
+def _workspace_path(value: str) -> Path:
+    if not value:
+        raise ValueError("Indiquez un chemin relatif au dossier du projet.")
+    candidate = Path(value)
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    candidate = candidate.resolve()
+    if not candidate.is_relative_to(PROJECT_ROOT.resolve()):
+        raise ValueError("Le GUI limite l'analyse aux fichiers du dossier du projet.")
+    if not candidate.exists():
+        raise ValueError("Ce fichier ou dossier n'existe pas.")
+    return candidate
+
+
+def render_topology(topology: dict[str, Any] | None = None) -> str:
+    topology = topology or {}
+    raw_assets = topology.get("assets", {})
+    assets = list(raw_assets.items()) if isinstance(raw_assets, dict) else []
+    network = str(topology.get("network") or local_ipv4_network() or "reseau inconnu")
+    gateway = str(topology.get("gateway") or _gateway_guess(network) or "passerelle inconnue")
+    updated_at = str(topology.get("updated_at") or "aucun scan")
+    width, height = 900, 460
+    center_x, center_y = width // 2, height // 2
+    elements = [
+        f'<svg class="map" viewBox="0 0 {width} {height}" role="img" '
+        'aria-label="Carte tactique des actifs autorisés">',
+        f'<foreignObject x="{center_x - 110}" y="{center_y - 80}" width="220" height="160">'
+        '<div xmlns="http://www.w3.org/1999/xhtml" class="topology-action">'
+        '<form method="post" action="/topology"><input type="hidden" name="operation" value="scan">'
+        f'<button type="submit">RESEAU<br/>IP<small>{escape(network)}<br>{escape(gateway)}</small></button></form>'
+        '<div class="topology-menu">'
+        '<form method="post" action="/topology"><input type="hidden" name="operation" value="scan">'
+        '<button type="submit">Scan</button></form>'
+        '<a href="#topology-router">Routeur</a>'
+        '<form method="post" action="/topology"><input type="hidden" name="operation" value="report">'
+        '<button type="submit">Rapport</button></form>'
+        '</div></div></foreignObject>',
+    ]
+    count = max(1, len(assets))
+    import math
+
+    for index, (address, asset) in enumerate(assets):
+        angle = (2 * math.pi * index / count) - math.pi / 2
+        x = center_x + math.cos(angle) * 300
+        y = center_y + math.sin(angle) * 170
+        line_start_x = center_x + math.cos(angle) * 68
+        line_start_y = center_y + math.sin(angle) * 68
+        line_end_x = x - math.cos(angle) * 44
+        line_end_y = y - math.sin(angle) * 44
+        risk = bool(asset.get("findings"))
+        modal_id = f"topology-device-{index}"
+        elements.append(
+            f'<line class="edge" x1="{line_start_x:.0f}" y1="{line_start_y:.0f}" '
+            f'x2="{line_end_x:.0f}" y2="{line_end_y:.0f}"/>'
+        )
+        elements.append(f'<a href="#{modal_id}">')
+        elements.append(f'<circle class="node{" node-risk" if risk else ""}" cx="{x:.0f}" cy="{y:.0f}" r="38"/>')
+        elements.append(
+            f'<text class="map-label" x="{x:.0f}" y="{y - 48:.0f}" text-anchor="middle">'
+            f'{escape(str(asset.get("hostname") or address))}</text>'
+        )
+        elements.append(
+            f'<text class="map-label" x="{x:.0f}" y="{y + 4:.0f}" text-anchor="middle">'
+            f'{escape(address)}</text>'
+        )
+        if asset.get("protocols"):
+            elements.append(
+                f'<text class="map-label" x="{x:.0f}" y="{y + 22:.0f}" text-anchor="middle">'
+                f'{escape(", ".join(asset["protocols"][:3]))}</text>'
+            )
+        elements.append("</a>")
+    if not assets:
+        elements.append(
+            '<text class="map-label" x="450" y="315" text-anchor="middle">'
+            "Aucun scan topologie lance dans cette session</text>"
+        )
+    elements.append("</svg>")
+    details = [
+        '<div id="topology-router" class="topology-detail"><section class="card">'
+        '<h2>Reseau IP</h2>'
+        f'<p><strong>Reseau</strong><br>{escape(network)}</p>'
+        f'<p><strong>Passerelle estimee</strong><br>{escape(gateway)}</p>'
+        f'<p><strong>Derniere mise a jour</strong><br>{escape(updated_at)}</p>'
+        '<p class="muted">Les protocoles affiches aident a comprendre la nature des flux: '
+        'TCP pour les connexions applicatives, ARP pour la resolution locale, ICMP pour la joignabilite.</p>'
+        '<a class="button" href="#">FERMER</a></section></div>'
+    ]
+    for index, (address, asset) in enumerate(assets):
+        protocols = ", ".join(asset.get("protocols", [])) or "Non observe"
+        services = asset.get("services", [])
+        hostname = str(asset.get("hostname") or "-")
+        details.append(
+            f'<div id="topology-device-{index}" class="topology-detail"><section class="card">'
+            f'<h2>{escape(address)}</h2>'
+            f'<p><strong>Nom reseau</strong><br>{escape(hostname)}</p>'
+            f'<p><strong>Services</strong><br>{len(services)} service(s). '
+            'Un service est une porte applicative connue ou observee sur un appareil.</p>'
+            f'<p><strong>Protocoles</strong><br>{escape(protocols)}. '
+            'Cette information aide a comprendre la nature des echanges dans la topologie.</p>'
+            f'{_value(asset)}<a class="button" href="#">FERMER</a></section></div>'
+        )
+    return "".join(elements + details)
+
+
+def _topology_assets() -> dict[str, dict[str, Any]]:
+    inventory = exposure_inventory()
+    assets: dict[str, dict[str, Any]] = {}
+    for address, asset in inventory.get("assets", {}).items():
+        assets[str(address)] = {
+            "label": asset.get("label", address),
+            "services": list(asset.get("services", [])),
+            "findings": list(asset.get("findings", [])),
+            "protocols": [],
+        }
+    for path in list_records("artifact"):
+        try:
+            payload = load_record(path)
+        except (ValueError, OSError, json.JSONDecodeError):
+            continue
+        kind = str(payload.get("kind", ""))
+        data = payload.get("data", {}) if isinstance(payload.get("data"), dict) else {}
+        value = str(payload.get("value", "")).strip()
+        if kind == "device":
+            address = _first_text(data, "address", "ip", "host") or value
+            if address:
+                _topology_asset(assets, address, payload.get("title", address))
+        elif kind == "service":
+            address = _first_text(data, "address", "ip", "host")
+            if address:
+                current = _topology_asset(assets, address, address)
+                current["services"].append(data)
+                if str(payload.get("risk", "info")) != "info":
+                    current["findings"].append(
+                        {"severity": payload.get("risk"), "message": payload.get("summary", "")}
+                    )
+        elif kind == "packet_observation":
+            packets = data.get("packets", [])
+            for packet in packets if isinstance(packets, list) else []:
+                if not isinstance(packet, dict):
+                    continue
+                source = _first_text(packet, "source_ip", "source")
+                destination = _first_text(packet, "destination_ip", "destination")
+                protocol = _first_text(packet, "protocol")
+                for address in (source, destination):
+                    if not address:
+                        continue
+                    current = _topology_asset(assets, address, address)
+                    if protocol and protocol not in current["protocols"]:
+                        current["protocols"].append(protocol)
+                    if not _is_private_address(address):
+                        current["findings"].append(
+                            {"severity": "info", "message": "Destination externe observee"}
+                        )
+    return dict(sorted(assets.items(), key=lambda item: (not _is_private_address(item[0]), item[0])))
+
+
+def _topology_asset(assets: dict[str, dict[str, Any]], address: str, label: object) -> dict[str, Any]:
+    return assets.setdefault(
+        address,
+        {"label": str(label or address), "services": [], "findings": [], "protocols": []},
+    )
+
+
+def _first_text(item: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = item.get(key)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _is_private_address(value: str) -> bool:
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return address.is_private or address.is_loopback or address.is_link_local
+
+
+def _gateway_guess(network_value: str) -> str:
+    try:
+        network = ipaddress.ip_network(network_value, strict=False)
+    except ValueError:
+        return ""
+    if not isinstance(network, ipaddress.IPv4Network):
+        return ""
+    hosts = network.hosts()
+    try:
+        return str(next(hosts))
+    except StopIteration:
+        return ""
+
+
+def _topology_from_discovery(network: str, engine: str, results: list[dict[str, str]]) -> dict[str, Any]:
+    assets: dict[str, dict[str, Any]] = {}
+    for item in results:
+        address = str(item.get("address") or item.get("ip") or "").strip()
+        if not address:
+            continue
+        hostname = str(item.get("hostname") or item.get("name") or "").strip()
+        assets[address] = {
+            "hostname": "" if hostname == "-" else hostname,
+            "services": [],
+            "findings": [],
+            "protocols": ["ICMP"],
+            "source": engine,
+            "raw": item,
+        }
+    return {
+        "network": network,
+        "gateway": _gateway_guess(network),
+        "engine": engine,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+        "assets": assets,
+    }
+
+
+def pwa_manifest() -> str:
+    return json.dumps(
+        {
+            "name": "recon SC",
+            "short_name": "recon SC",
+            "description": "Interface locale autorisee pour observer, profiler et correler.",
+            "start_url": "/",
+            "scope": "/",
+            "display": "standalone",
+            "background_color": "#030609",
+            "theme_color": "#79ff3d",
+            "orientation": "any",
+            "icons": [
+                {"src": "/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable"}
+            ],
+            "shortcuts": [
+                {"name": "Scanner", "url": "/scanner", "description": "Ouvrir la reconnaissance locale"},
+                {"name": "Carte", "url": "/map", "description": "Ouvrir cartographie et topologie"},
+                {"name": "Rapports", "url": "/reports", "description": "Ouvrir rapports et timeline"},
+            ],
+        },
+        ensure_ascii=False,
+    )
+
+
+def pwa_icon() -> str:
+    return """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<rect width="512" height="512" rx="96" fill="#030609"/>
+<path d="M72 98h368v316H72z" fill="none" stroke="#143b24" stroke-width="10"/>
+<path d="M120 168h112v48H120zM120 248h272v28H120zM120 310h190v28H120z" fill="#79ff3d"/>
+<path d="M322 154l70 70-70 70-34-34 36-36-36-36z" fill="#38e8ff"/>
+<circle cx="384" cy="360" r="28" fill="#a855f7"/>
+</svg>"""
+
+
+def service_worker() -> str:
+    return """const CACHE_NAME = "recon-sc-shell-v1";
+const APP_SHELL = ["/", "/manifest.webmanifest", "/app-icon.svg"];
+self.addEventListener("install", event => {
+  event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));
+  self.skipWaiting();
+});
+self.addEventListener("activate", event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key)))));
+  self.clients.claim();
+});
+self.addEventListener("fetch", event => {
+  if (event.request.method !== "GET") return;
+  event.respondWith(fetch(event.request).catch(() => caches.match(event.request).then(response => response || caches.match("/"))));
+});"""
+
+
+class WebState:
+    def __init__(self) -> None:
+        self.token = secrets.token_urlsafe(32)
+        self.accepted = False
+        self.scope_authorized = False
+        self.result: dict[str, Any] | None = None
+        self.result_title = ""
+        self.result_route = ""
+        self.recon_form: dict[str, str | bool] = {}
+        self.topology: dict[str, Any] = {}
+        self.message = ""
+        self.error = ""
+
+
+def render_layout(title: str, body: str, accepted: bool = True) -> str:
+    if not accepted:
+        return (
+            '<!doctype html><html lang="fr"><head><meta charset="utf-8">'
+            '<meta name="viewport" content="width=device-width,initial-scale=1">'
+            '<link rel="manifest" href="/manifest.webmanifest">'
+            '<link rel="icon" href="/app-icon.svg" type="image/svg+xml">'
+            '<meta name="theme-color" content="#79ff3d">'
+            f"<title>{escape(title)}</title><style>{CSS}</style></head>"
+            f'<body><main class="hero">{body}</main></body></html>'
+        )
+    settings = load_settings()
+    context = local_context()
+    body_class = "" if settings.glass_effect else "no-glass"
+    glass_alpha = f"{settings.glass_opacity:.2f}"
+    night = datetime.now().hour >= 19 or datetime.now().hour < 7
+    app_mode = ("dark" if night else "light") if settings.app_color_mode == "auto" else settings.app_color_mode
+    map_mode = "night" if night else "day"
+    weather_label = "Meteo --"
+    return f"""<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/app-icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/app-icon.svg">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.css">
+<meta name="theme-color" content="#79ff3d">
+<title>{escape(title)}</title><style>{CSS}</style></head>
+<body class="{body_class}" data-theme="{escape(settings.theme)}" data-app-mode="{app_mode}"
+data-map-mode="{map_mode}" style="--glass-alpha:{glass_alpha}">
+<div class="shell nav-collapsed" id="app-shell">
+<main><div class="topline"><div class="title-copy"><div class="title-actions">
+<div class="page-actions"><a class="home-link" href="/" aria-label="Accueil">Accueil</a>
+<button class="back-button icon-button" type="button" onclick="history.back()" aria-label="Retour" title="Retour">&#8592;</button></div>
+<h1 class="page-heading">recon SC // interface locale autorisée / {escape(title)}</h1></div></div>
+<div class="top-actions"><a class="button back-button icon-button" href="/settings" aria-label="Réglages" title="Réglages">&#9881;</a></div></div>
+<div class="context-bar"><span id="live-clock">{escape(context['time'])}</span>
+<span>{escape(context['timezone'])}</span><span>{escape(context['platform'])}</span>
+<button class="context-weather" id="context-weather" type="button" title="Charger la météo avec votre position">{weather_label}</button></div>
+{body}<footer class="ownership">recon SC · Cyber Learning Toolbox © 2026 Maréchaux Willem ·
+Projet original distribué sous licence MIT · La notice de copyright doit être conservée.</footer>
+</main></div>
+<div class="loading-overlay" id="loading-overlay" role="status" aria-live="polite">
+<section class="loading-panel"><div class="loading-head">
+<span id="loading-title">OPÉRATION EN COURS</span><span id="loading-time">00:00</span>
+</div><div class="loading-track"></div><pre class="loading-log" id="loading-log"></pre>
+<p class="muted">Gardez cette page ouverte. Le résultat s'affichera automatiquement.</p>
+</section></div><script>
+setInterval(()=>{{const e=document.getElementById('live-clock');if(e)e.textContent=new Date().toLocaleTimeString();}},1000);
+window.addEventListener("DOMContentLoaded",()=>{{
+const weatherButton=document.getElementById("context-weather");
+if(!weatherButton)return;
+const applyWeather=data=>{{
+if(!data)return;
+const temperature=Number(data.temperature);
+weatherButton.textContent=Number.isFinite(temperature)?`Meteo ${{temperature.toFixed(1)}} °C`:"Meteo --";
+weatherButton.title=data.description?`${{data.description}} · ressenti ${{data.apparent_temperature}} °C · vent ${{data.wind_speed}} km/h`:"Meteo locale";
+}};
+try{{
+const cached=JSON.parse(localStorage.getItem("recon-weather")||"null");
+if(cached&&Date.now()-cached.savedAt<3600000)applyWeather(cached);
+}}catch(error){{}}
+weatherButton.addEventListener("click",()=>{{
+if(!navigator.geolocation){{weatherButton.textContent="Meteo indisponible";return;}}
+weatherButton.textContent="Meteo...";
+navigator.geolocation.getCurrentPosition(async position=>{{
+const lat=position.coords.latitude.toFixed(5);
+const lon=position.coords.longitude.toFixed(5);
+const url=`https://api.open-meteo.com/v1/forecast?latitude=${{lat}}&longitude=${{lon}}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&timezone=auto`;
+try{{
+const response=await fetch(url);
+if(!response.ok)throw new Error("HTTP "+response.status);
+const payload=await response.json();
+const current=payload.current||{{}};
+const data={{savedAt:Date.now(),temperature:current.temperature_2m,apparent_temperature:current.apparent_temperature,
+wind_speed:current.wind_speed_10m,description:"Open-Meteo"}};
+localStorage.setItem("recon-weather",JSON.stringify(data));
+applyWeather(data);
+}}catch(error){{weatherButton.textContent="Meteo erreur";weatherButton.title=error.message;}}
+}},error=>{{weatherButton.textContent="Meteo refusee";weatherButton.title=error.message;}},{{enableHighAccuracy:false,timeout:10000,maximumAge:600000}});
+}});
+}});
+function locate(){{if(!navigator.geolocation)return;navigator.geolocation.getCurrentPosition(p=>{{
+document.querySelector('[name=latitude]').value=p.coords.latitude.toFixed(5);
+document.querySelector('[name=longitude]').value=p.coords.longitude.toFixed(5);}});}}
+const shell=document.getElementById("app-shell");
+const params=new URLSearchParams(window.location.search);
+if([...params.keys()].some(key=>key.startsWith("source_"))){{
+document.querySelectorAll('[name^="source_"]').forEach(item=>item.checked=false);
+}}
+params.forEach((value,key)=>{{
+const field=document.querySelector(`[name="${{CSS.escape(key)}}"]`);
+if(field?.type==="checkbox")field.checked=["1","true","on","yes"].includes(String(value).toLowerCase());
+else if(field&&"value" in field)field.value=value;
+}});
+function syncReconFields(){{
+const hasDiscover=document.querySelector('[name="source_discover"]')?.checked;
+const hasPorts=document.querySelector('[name="source_ports"]')?.checked;
+const hasHttp=document.querySelector('[name="source_http"]')?.checked;
+const rules={{network:hasDiscover,target:hasPorts||hasHttp,ports:hasPorts}};
+document.querySelectorAll("[data-recon-field]").forEach(field=>{{
+field.hidden=!rules[field.dataset.reconField];
+}});
+const subject=document.querySelector('[name="subject"]');
+const target=document.querySelector('[name="target"]');
+const network=document.querySelector('[name="network"]');
+if(subject){{
+if((hasPorts||hasHttp)&&target?.value)subject.value=target.value;
+else if(hasDiscover&&network?.value)subject.value=network.value;
+}}
+}}
+document.querySelectorAll('[name^="source_"]').forEach(item=>item.addEventListener("change",syncReconFields));
+document.querySelectorAll('[name="network"],[name="target"]').forEach(item=>item.addEventListener("input",syncReconFields));
+syncReconFields();
+const appIcons={{
+operations:"OPS",recon:"IP",profiler:"ID",labs:"LAB","sans-fil":"WIFI",
+inventaire:"INV",cartographie:"MAP",archives:"ARC",tools:"TLS",context:"CTX",
+"signal fantôme":"LAB","mission réseau":"IP","profil autorisé":"ID",
+"kill chain":"KC",scanner:"SCAN",appareils:"DEV",monitoring:"MON",
+"carte":"MAP","missions":"MIS","rapports":"REP","reconnaissance":"REC",
+"scan":"SCAN","énumération":"ENUM","analyse":"ANA","hypothèses":"HYP",
+"corrélation":"COR","recommandations":"REC","rapport":"REP"
+}};
+document.querySelectorAll(".app").forEach(item=>{{
+const label=item.querySelector("strong")?.textContent?.trim().toLowerCase()||"";
+item.dataset.icon=appIcons[label]||label.slice(0,3).toUpperCase()||"GO";
+}});
+if("serviceWorker" in navigator){{
+navigator.serviceWorker.register("/service-worker.js").catch(()=>{{}});
+}}
+document.querySelectorAll("[data-tabs]").forEach(group=>{{
+const buttons=group.querySelectorAll("[data-tab]");
+const panels=group.querySelectorAll("[data-panel]");
+const activate=name=>{{
+buttons.forEach(item=>item.classList.toggle("active",item.dataset.tab===name));
+panels.forEach(item=>item.classList.toggle("active",item.dataset.panel===name));
+}};
+buttons.forEach(button=>button.addEventListener("click",()=>{{
+activate(button.dataset.tab);
+}}));
+activate(group.dataset.active||buttons[0]?.dataset.tab||"");
+}});
+document.querySelectorAll("[data-tool-picker]").forEach(picker=>{{
+const sections=document.querySelectorAll("[data-tool-section]");
+const choices=picker.querySelectorAll("[data-tool-choice]");
+const activateTool=name=>{{
+sections.forEach(section=>section.classList.toggle("active",section.dataset.toolSection===name));
+choices.forEach(choice=>choice.classList.toggle("active",choice.dataset.toolChoice===name));
+}};
+choices.forEach(choice=>choice.addEventListener("click",event=>{{
+event.preventDefault();
+const name=choice.dataset.toolChoice||"core";
+history.replaceState({{}},"","/tools?tool="+encodeURIComponent(name));
+activateTool(name);
+}}));
+activateTool(picker.dataset.activeTool||"core");
+}});
+document.querySelectorAll("[name=theme]").forEach(choice=>choice.addEventListener("change",()=>{{
+document.body.dataset.theme=choice.value;
+}}));
+document.querySelector("[name=glass_effect]")?.addEventListener("change",event=>{{
+document.body.classList.toggle("no-glass",!event.target.checked);
+}});
+document.querySelector("[name=glass_opacity]")?.addEventListener("input",event=>{{
+document.body.style.setProperty("--glass-alpha",event.target.value);
+document.getElementById("glass-opacity-value").textContent=Number(event.target.value).toFixed(2);
+}});
+function effectiveAppMode(value){{
+const hour=new Date().getHours();return value==="auto"?(hour>=19||hour<7?"dark":"light"):value;
+}}
+function effectiveMapMode(value){{
+if(value!=="auto")return value;
+if(geoState.lat!==null&&geoState.lon!==null)return sunModeForLocation(geoState.lat,geoState.lon);
+const hour=new Date().getHours();return hour>=19||hour<7?"night":"day";
+}}
+function sunModeForLocation(lat,lon){{
+const now=new Date();const start=new Date(now.getFullYear(),0,0);
+const day=Math.floor((now-start)/86400000);
+const lngHour=lon/15;
+const zenith=90.833;
+const calc=rise=>{{
+const t=day+((rise?6:18)-lngHour)/24;
+const m=(.9856*t)-3.289;
+let l=m+1.916*Math.sin(m*Math.PI/180)+.020*Math.sin(2*m*Math.PI/180)+282.634;
+l=(l+360)%360;
+let ra=Math.atan(.91764*Math.tan(l*Math.PI/180))*180/Math.PI;
+ra=(ra+360)%360;ra+=Math.floor(l/90)*90-Math.floor(ra/90)*90;ra/=15;
+const sinDec=.39782*Math.sin(l*Math.PI/180);
+const cosDec=Math.cos(Math.asin(sinDec));
+const cosH=(Math.cos(zenith*Math.PI/180)-sinDec*Math.sin(lat*Math.PI/180))/(cosDec*Math.cos(lat*Math.PI/180));
+if(cosH>1)return 24;if(cosH<-1)return 0;
+const h=(rise?360-Math.acos(cosH)*180/Math.PI:Math.acos(cosH)*180/Math.PI)/15;
+const local=(h+ra-(.06571*t)-6.622-lngHour+now.getTimezoneOffset()/-60+24)%24;
+return local;
+}};
+const sunrise=calc(true),sunset=calc(false);
+const current=now.getHours()+now.getMinutes()/60;
+return current>=sunrise&&current<sunset?"day":"night";
+}}
+function mapModeIcon(value){{
+return value==="day"?"☀":value==="night"?"☾":"◐";
+}}
+function setMapMode(value){{
+localStorage.setItem("mapColorMode",value);
+document.body.dataset.mapMode=effectiveMapMode(value);
+const button=document.getElementById("map-mode-cycle");
+if(button){{button.textContent=mapModeIcon(value);button.title="Mode carte : "+value;}}
+renderGeoMap();
+}}
+function cycleMapMode(){{
+const current=localStorage.getItem("mapColorMode")||"auto";
+const next=current==="auto"?"day":current==="day"?"night":"auto";
+setMapMode(next);
+}}
+function previewModes(){{
+const appValue=document.querySelector("[name=app_color_mode]:checked")?.value||"auto";
+const appTrack=document.querySelector('[data-mode-track="app"]');
+if(appTrack)appTrack.dataset.value=appValue;
+document.body.dataset.appMode=effectiveAppMode(appValue);
+document.body.dataset.mapMode=effectiveMapMode(localStorage.getItem("mapColorMode")||"auto");
+renderGeoMap();
+}}
+["app_color_mode"].forEach(name=>{{
+document.querySelectorAll(`[name=${{name}}]`).forEach(item=>item.addEventListener("change",previewModes));
+}});
+const mapProviders={{
+standard:{{url:"https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png",
+label:"OpenStreetMap Standard",maxZoom:19}},
+topographic:{{url:"https://a.tile.opentopomap.org/{{z}}/{{x}}/{{y}}.png",
+label:"OpenTopoMap",maxZoom:17}},
+cartoLight:{{url:"https://a.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}.png",
+label:"CARTO Positron",maxZoom:19}},
+cartoDark:{{url:"https://a.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}.png",
+label:"CARTO Dark Matter",maxZoom:19,effect:"map-style-dark"}},
+maplibre3d:{{label:"MapLibre 3D plongeante",maxZoom:18,maplibre:true}}
+}};
+let mapPinchDistance=0;
+let mapDrag=null;
+let mapLibreInstance=null;
+const geoState={{lat:null,lon:null,markerLat:null,markerLon:null,zoom:16,route:[]}};
+function redrawGeoMap(){{
+const lat=document.getElementById("map-latitude")?.value;
+const lon=document.getElementById("map-longitude")?.value;
+if(lat&&lon)showGeoMap(lat,lon);
+}}
+function adjustGeoZoom(delta){{
+const zoom=document.getElementById("map-zoom");
+if(!zoom)return;
+zoom.value=String(Math.max(2,Math.min(19,(Number(zoom.value)||16)+delta)));
+geoState.zoom=Number(zoom.value)||16;
+renderGeoMap();
+}}
+function recenterGeoMap(){{
+const status=document.getElementById("geo-map-status");
+if(geoState.markerLat===null||geoState.markerLon===null){{
+status.textContent="Aucun marqueur à recentrer. Saisissez une position, recherchez une adresse ou utilisez votre position.";
+return;
+}}
+geoState.lat=geoState.markerLat;
+geoState.lon=geoState.markerLon;
+renderGeoMap();
+}}
+function latLonToTile(lat,lon,zoom){{
+const n=2**zoom;
+lat=Math.max(-85.05112878,Math.min(85.05112878,lat));
+const latRad=lat*Math.PI/180;
+return {{x:(lon+180)/360*n,y:(1-Math.asinh(Math.tan(latRad))/Math.PI)/2*n}};
+}}
+function tileToLatLon(x,y,zoom){{
+const n=2**zoom;
+return {{lat:Math.atan(Math.sinh(Math.PI*(1-2*y/n)))*180/Math.PI,lon:x/n*360-180}};
+}}
+function screenPoint(lat,lon,centerX,centerY,zoom,width,height){{
+const tile=latLonToTile(lat,lon,zoom);
+return {{x:width/2+(tile.x-centerX)*256,y:height/2+(tile.y-centerY)*256}};
+}}
+function drawRoute(map,centerX,centerY,zoom,width,height){{
+if(!geoState.route.length)return;
+const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+svg.setAttribute("class","map-route");svg.setAttribute("viewBox",`0 0 ${{width}} ${{height}}`);
+const points=geoState.route.map(item=>screenPoint(item.lat,item.lon,centerX,centerY,zoom,width,height));
+const path=document.createElementNS("http://www.w3.org/2000/svg","path");
+path.setAttribute("d",points.map((p,i)=>(i?"L":"M")+p.x.toFixed(1)+" "+p.y.toFixed(1)).join(" "));
+svg.appendChild(path);
+[points[0],points[points.length-1]].filter(Boolean).forEach(point=>{{
+const circle=document.createElementNS("http://www.w3.org/2000/svg","circle");
+circle.setAttribute("class","map-route-point");circle.setAttribute("cx",point.x);circle.setAttribute("cy",point.y);
+circle.setAttribute("r","5");svg.appendChild(circle);
+}});
+map.appendChild(svg);
+}}
+async function geocodeAddress(value){{
+const query=String(value||"").trim();
+if(!query)throw new Error("Adresse vide.");
+const url="https://nominatim.openstreetmap.org/search?format=json&limit=1&q="+encodeURIComponent(query);
+const response=await fetch(url,{{headers:{{"Accept":"application/json"}}}});
+if(!response.ok)throw new Error("Recherche d'adresse indisponible pour le moment.");
+const items=await response.json();
+if(!items.length)throw new Error("Adresse introuvable.");
+return {{lat:Number(items[0].lat),lon:Number(items[0].lon),label:items[0].display_name}};
+}}
+async function searchMapAddress(){{
+const status=document.getElementById("geo-map-status");
+try{{
+status.textContent="Recherche de l'adresse...";
+const result=await geocodeAddress(document.getElementById("map-search").value);
+document.getElementById("map-latitude").value=result.lat.toFixed(5);
+document.getElementById("map-longitude").value=result.lon.toFixed(5);
+showGeoMap(result.lat,result.lon);
+status.textContent="Adresse trouvée : "+result.label;
+}}catch(error){{status.textContent=error.message;}}
+}}
+async function routeFromMap(){{
+const status=document.getElementById("geo-map-status");
+try{{
+status.textContent="Calcul de l'itinéraire...";
+let start;
+if(document.getElementById("route-start-mode").value==="current"){{
+start={{lat:geoState.markerLat??geoState.lat,lon:geoState.markerLon??geoState.lon}};
+if(start.lat===null||start.lon===null)throw new Error("Indiquez ou localisez d'abord un point de départ.");
+}}else start=await geocodeAddress(document.getElementById("route-start").value);
+const end=await geocodeAddress(document.getElementById("route-end").value);
+const profile=document.getElementById("route-profile").value;
+const url=`https://router.project-osrm.org/route/v1/${{profile}}/${{start.lon}},${{start.lat}};${{end.lon}},${{end.lat}}?overview=full&geometries=geojson`;
+const response=await fetch(url);
+if(!response.ok)throw new Error("Service d'itineraire indisponible pour ce mode.");
+const payload=await response.json();
+if(payload.code!=="Ok"||!payload.routes?.length)throw new Error("Itineraire indisponible pour ces points.");
+geoState.route=payload.routes[0].geometry.coordinates.map(item=>({{lon:item[0],lat:item[1]}}));
+geoState.lat=(start.lat+end.lat)/2;geoState.lon=(start.lon+end.lon)/2;geoState.markerLat=end.lat;geoState.markerLon=end.lon;
+renderGeoMap();
+status.textContent="Itinéraire : "+(payload.routes[0].distance/1000).toFixed(1)+" km.";
+}}catch(error){{status.textContent=error.message;}}
+}}
+function showGeoMap(latitude,longitude){{
+let lat=Number(latitude);const lon=Number(longitude);
+if(!Number.isFinite(lat)||!Number.isFinite(lon)||lat<-90||lat>90||lon<-180||lon>180)return;
+geoState.lat=Math.max(-85.05112878,Math.min(85.05112878,lat));
+geoState.lon=lon;
+geoState.markerLat=geoState.lat;
+geoState.markerLon=lon;
+geoState.zoom=Number(document.getElementById("map-zoom").value)||geoState.zoom||16;
+renderGeoMap();
+}}
+async function renderMapLibreMap(map,lat,lon,zoom,provider){{
+map.replaceChildren();
+map.className="geo-map maplibre-live";
+map.classList.toggle("map-night",document.body.dataset.mapMode==="night");
+try{{
+const module=await import("https://unpkg.com/maplibre-gl@latest/dist/maplibre-gl.mjs");
+if(mapLibreInstance){{mapLibreInstance.remove();mapLibreInstance=null;}}
+mapLibreInstance=new module.Map({{
+container:map,
+style:"https://demotiles.maplibre.org/style.json",
+center:[lon,lat],
+zoom:Math.min(zoom,provider.maxZoom||18),
+pitch:62,
+bearing:-28,
+attributionControl:false
+}});
+mapLibreInstance.addControl(new module.NavigationControl({{visualizePitch:true}}),"top-left");
+mapLibreInstance.on("load",()=>{{
+try{{
+if(mapLibreInstance.getSource("openmaptiles")&&!mapLibreInstance.getLayer("drop-3d-buildings")){{
+mapLibreInstance.addLayer({{
+id:"drop-3d-buildings",
+source:"openmaptiles",
+"source-layer":"building",
+type:"fill-extrusion",
+minzoom:14,
+paint:{{
+"fill-extrusion-color":document.body.dataset.mapMode==="night"?"#1f2937":"#94a3b8",
+"fill-extrusion-height":["coalesce",["get","render_height"],["get","height"],12],
+"fill-extrusion-base":["coalesce",["get","render_min_height"],["get","min_height"],0],
+"fill-extrusion-opacity":.72
+}}
+}});
+}}
+}}catch(error){{}}
+}});
+mapLibreInstance.on("moveend",()=>{{
+const center=mapLibreInstance.getCenter();
+geoState.lat=center.lat;geoState.lon=center.lng;geoState.zoom=Math.round(mapLibreInstance.getZoom());
+document.getElementById("map-zoom").value=String(geoState.zoom);
+}});
+document.getElementById("map-attribution").textContent=provider.label;
+document.getElementById("geo-map-status").textContent="Vue 3D MapLibre : "+lat.toFixed(5)+", "+lon.toFixed(5)+" · zoom "+zoom;
+}}catch(error){{
+map.className="geo-map";
+document.getElementById("geo-map-status").textContent="MapLibre indisponible, retour au rendu standard : "+error.message;
+document.getElementById("map-layer").value="standard";
+renderGeoMap();
+}}
+}}
+function renderGeoMap(){{
+if(geoState.lat===null||geoState.lon===null)return;
+let lat=Number(geoState.lat);const lon=Number(geoState.lon);
+lat=Math.max(-85.05112878,Math.min(85.05112878,lat));
+const map=document.getElementById("geo-map-frame");
+const provider=mapProviders[document.getElementById("map-layer").value]||mapProviders.standard;
+const requestedZoom=Number(geoState.zoom)||15;
+const zoom=Math.min(requestedZoom,provider.maxZoom);
+geoState.zoom=zoom;document.getElementById("map-zoom").value=String(zoom);
+if(provider.maplibre){{renderMapLibreMap(map,lat,lon,zoom,provider);return;}}
+if(mapLibreInstance){{mapLibreInstance.remove();mapLibreInstance=null;}}
+map.className="geo-map";
+const n=2**zoom;
+const center=latLonToTile(lat,lon,zoom);
+const x=center.x,y=center.y;
+const width=map.clientWidth||900,height=map.clientHeight||520;
+const horizontal=Math.ceil(width/512)+1,vertical=Math.ceil(height/512)+1;
+map.replaceChildren();
+for(let dx=-horizontal;dx<=horizontal;dx++)for(let dy=-vertical;dy<=vertical;dy++){{
+const rawX=Math.floor(x)+dx,tileY=Math.floor(y)+dy;
+if(tileY<0||tileY>=n)continue;
+const tileX=((rawX%n)+n)%n;
+const image=document.createElement("img");
+image.className="map-tile";image.alt="";image.loading="lazy";
+image.src=provider.url.replace("{{z}}",zoom).replace("{{x}}",tileX).replace("{{y}}",tileY);
+image.style.left=(width/2+(rawX-x)*256)+"px";
+image.style.top=(height/2+(tileY-y)*256)+"px";
+map.appendChild(image);
+}}
+const marker=document.createElement("span");marker.className="map-marker";
+if(geoState.markerLat!==null&&geoState.markerLon!==null){{
+const markerTile=latLonToTile(geoState.markerLat,geoState.markerLon,zoom);
+marker.style.left=(width/2+(markerTile.x-x)*256)+"px";
+marker.style.top=(height/2+(markerTile.y-y)*256)+"px";
+marker.title=geoState.markerLat.toFixed(5)+", "+geoState.markerLon.toFixed(5);
+map.appendChild(marker);
+}}
+map.classList.toggle("map-night",document.body.dataset.mapMode==="night");
+map.classList.remove("map-style-dark");
+if(provider.effect)map.classList.add(provider.effect);
+drawRoute(map,x,y,zoom,width,height);
+document.getElementById("map-attribution").textContent=provider.label;
+document.getElementById("geo-map-status").textContent=
+"Position centrée : "+lat.toFixed(5)+", "+lon.toFixed(5)+" · zoom "+zoom;
+}}
+function locateMap(){{
+const status=document.getElementById("geo-map-status");
+if(!navigator.geolocation){{status.textContent="Géolocalisation non prise en charge.";return;}}
+status.textContent="Demande de position au navigateur...";
+navigator.geolocation.getCurrentPosition(position=>{{
+const lat=position.coords.latitude,lon=position.coords.longitude;
+document.getElementById("map-latitude").value=lat.toFixed(5);
+document.getElementById("map-longitude").value=lon.toFixed(5);
+showGeoMap(lat,lon);
+}},error=>status.textContent="Position refusée ou indisponible : "+error.message,
+{{enableHighAccuracy:false,timeout:10000,maximumAge:60000}});
+}}
+window.addEventListener("DOMContentLoaded",()=>{{
+const map=document.getElementById("geo-map-frame");
+if(!map)return;
+const controls=document.querySelector(".map-ui");
+if(controls&&!document.getElementById("map-mode-cycle")){{
+const button=document.createElement("button");
+button.type="button";button.className="map-mode-button";button.id="map-mode-cycle";
+button.addEventListener("click",cycleMapMode);
+controls.insertBefore(button,controls.lastElementChild);
+}}
+setMapMode(localStorage.getItem("mapColorMode")||"auto");
+map.addEventListener("wheel",event=>{{
+event.preventDefault();
+adjustGeoZoom(event.deltaY<0?1:-1);
+}},{{passive:false}});
+map.addEventListener("pointerdown",event=>{{
+if(geoState.lat===null||event.pointerType==="touch"&&event.isPrimary===false)return;
+map.setPointerCapture(event.pointerId);
+mapDrag={{id:event.pointerId,startX:event.clientX,startY:event.clientY,
+center:latLonToTile(geoState.lat,geoState.lon,geoState.zoom),zoom:geoState.zoom}};
+}});
+map.addEventListener("pointermove",event=>{{
+if(!mapDrag||mapDrag.id!==event.pointerId)return;
+const moved=tileToLatLon(
+mapDrag.center.x-(event.clientX-mapDrag.startX)/256,
+mapDrag.center.y-(event.clientY-mapDrag.startY)/256,
+mapDrag.zoom
+);
+geoState.lat=Math.max(-85.05112878,Math.min(85.05112878,moved.lat));
+geoState.lon=((moved.lon+540)%360)-180;
+renderGeoMap();
+}});
+map.addEventListener("pointerup",event=>{{if(mapDrag?.id===event.pointerId)mapDrag=null;}});
+map.addEventListener("pointercancel",()=>mapDrag=null);
+map.addEventListener("touchmove",event=>{{
+if(event.touches.length!==2)return;
+const a=event.touches[0],b=event.touches[1];
+const distance=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+if(mapPinchDistance&&Math.abs(distance-mapPinchDistance)>36){{
+adjustGeoZoom(distance>mapPinchDistance?1:-1);
+mapPinchDistance=distance;
+}}else if(!mapPinchDistance)mapPinchDistance=distance;
+event.preventDefault();
+}},{{passive:false}});
+map.addEventListener("touchend",()=>mapPinchDistance=0);
+document.getElementById("map-layer")?.addEventListener("change",redrawGeoMap);
+document.getElementById("map-zoom")?.addEventListener("change",redrawGeoMap);
+}});
+window.addEventListener("DOMContentLoaded",()=>{{
+const auto=document.getElementById("topology-auto-refresh");
+const delay=document.getElementById("topology-auto-delay");
+if(!auto||!delay)return;
+let timer=null;
+const submitScan=()=>{{
+const form=document.createElement("form");
+form.method="post";form.action="/topology";
+const input=document.createElement("input");
+input.type="hidden";input.name="operation";input.value="scan";
+form.appendChild(input);document.body.appendChild(form);form.submit();
+}};
+const sync=()=>{{
+localStorage.setItem("topologyAutoRefresh",auto.checked?"1":"0");
+localStorage.setItem("topologyAutoDelay",delay.value);
+if(timer)clearInterval(timer);
+if(auto.checked)timer=setInterval(submitScan,Math.max(30,Number(delay.value)||60)*1000);
+}};
+auto.checked=localStorage.getItem("topologyAutoRefresh")==="1";
+delay.value=localStorage.getItem("topologyAutoDelay")||delay.value;
+auto.addEventListener("change",sync);delay.addEventListener("change",sync);sync();
+}});
+window.addEventListener("DOMContentLoaded",()=>{{
+document.querySelectorAll("[data-scroll-panel]").forEach(panel=>{{
+const track=panel.querySelector("[data-scroll-track]");
+if(!track)return;
+const axis=panel.dataset.scrollAxis||"x";
+const update=()=>panel.classList.toggle("has-overflow",axis==="y"?track.scrollHeight>track.clientHeight+4:track.scrollWidth>track.clientWidth+4);
+panel.querySelectorAll("[data-scroll-dir]").forEach(button=>button.addEventListener("click",event=>{{
+event.preventDefault();
+const amount=Number(button.dataset.scrollDir||1)*Math.max(120,(axis==="y"?track.clientHeight:track.clientWidth)*.72);
+track.scrollBy(axis==="y"?{{top:amount,behavior:"smooth"}}:{{left:amount,behavior:"smooth"}});
+}}));
+update();
+track.addEventListener("scroll",update);
+window.addEventListener("resize",update);
+}});
+}});
+window.addEventListener("DOMContentLoaded",()=>{{
+const scanButton=document.getElementById("camera-scan-qr");
+const copyButton=document.getElementById("camera-scan-copy");
+const fileInput=document.getElementById("camera-scan-file");
+const output=document.getElementById("camera-scan-output");
+const status=document.getElementById("camera-scan-status");
+if(scanButton&&fileInput&&output&&status){{
+scanButton.addEventListener("click",async event=>{{
+event.preventDefault();
+const file=fileInput.files?.[0];
+if(!file){{status.textContent="Selectionnez une image ou prenez une photo.";return;}}
+if(!("BarcodeDetector" in window)){{status.textContent="Scan QR non disponible dans ce navigateur. Essayez Chrome/Android ou importez l'image dans le lecteur QR fichier.";return;}}
+try{{
+const detector=new BarcodeDetector({{formats:["qr_code"]}});
+const bitmap=await createImageBitmap(file);
+const codes=await detector.detect(bitmap);
+output.value=codes.map(code=>code.rawValue).join("\\n");
+status.textContent=codes.length?`${{codes.length}} QR detecte(s).`:"Aucun QR detecte dans l'image.";
+}}catch(error){{status.textContent="Scan impossible : "+error.message;}}
+}});
+copyButton?.addEventListener("click",async event=>{{
+event.preventDefault();
+if(!output.value)return;
+await navigator.clipboard?.writeText(output.value);
+status.textContent="Resultat copie dans le presse-papiers.";
+}});
+}}
+}});
+const loadingSteps={{
+discover:["Validation du réseau privé autorisé","Sélection de Nmap ou du moteur portable",
+"Envoi des sondes de découverte","Collecte des hôtes ayant répondu",
+"Résolution des noms disponibles","Préparation du résultat"],
+scan:["Validation de la cible et des ports","Sélection de Nmap ou du moteur portable",
+"Test des ports demandés","Identification des services disponibles",
+"Préparation du résultat"],
+profile:["Validation de la cible","Collecte des noms et voisins réseau",
+"Observation des services","Estimation du type d'appareil",
+"Construction de la fiche technique"],
+wireless:["Vérification des capacités du système","Interrogation des API locales",
+"Normalisation des informations disponibles","Préparation du résultat sans-fil"],
+headers:["Ouverture de la connexion HTTP","Lecture des en-têtes exposés",
+"Analyse des politiques de sécurité","Préparation des constats"],
+tools:["Validation de l'entrée","Lancement de l'analyse locale",
+"Classement des observations","Préparation du résultat technique"],
+context:["Validation des coordonnées","Interrogation du service météo",
+"Lecture des conditions actuelles","Préparation du contexte"],
+lab:["Création de l'espace pédagogique","Génération des artefacts inoffensifs",
+"Vérification des fichiers du laboratoire"],
+settings:["Validation des préférences","Écriture de la configuration locale"],
+default:["Validation de la demande","Traitement local en cours","Préparation de la réponse"]
+}};
+document.querySelectorAll("form").forEach(form=>form.addEventListener("submit",async event=>{{
+if(form.dataset.loading==="1")return;
+const route=(new URL(form.action)).pathname.split("/").filter(Boolean).pop()||"default";
+if(form.dataset.confirm&&!window.confirm(form.dataset.confirm)){{event.preventDefault();return;}}
+if(route==="settings")return;
+event.preventDefault();
+form.dataset.loading="1";
+const action=form.querySelector("[name=action]")?.value||route;
+const steps=loadingSteps[action]||loadingSteps[route]||loadingSteps.default;
+const overlay=document.getElementById("loading-overlay");
+const log=document.getElementById("loading-log");
+const timer=document.getElementById("loading-time");
+const title=document.getElementById("loading-title");
+title.textContent=(route==="recon"?"RECONNAISSANCE":route.toUpperCase())+" EN COURS";
+overlay.classList.add("active");
+let elapsed=0,index=0;
+const addLine=text=>{{const line=document.createElement("span");line.textContent=text;
+log.appendChild(line);log.scrollTop=log.scrollHeight;}};
+const subject=form.querySelector("[name=subject],[name=target],[name=url]");
+if(subject?.value)addLine("Cible déclarée : "+subject.value);
+addLine(steps[index++]);
+const timerId=setInterval(()=>{{elapsed++;timer.textContent=String(Math.floor(elapsed/60)).padStart(2,"0")
++":"+String(elapsed%60).padStart(2,"0");}},1000);
+const logId=setInterval(()=>{{if(index<steps.length)addLine(steps[index++]);
+else addLine("Traitement toujours actif depuis "+elapsed+" seconde(s), attente de la réponse...");}},1400);
+const started=Date.now();
+try{{
+const response=await fetch(form.action,{{
+method:(form.method||"POST").toUpperCase(),body:new FormData(form),
+credentials:"same-origin",redirect:"follow"
+}});
+const html=await response.text();
+const minimum=1200-(Date.now()-started);
+if(minimum>0)await new Promise(resolve=>setTimeout(resolve,minimum));
+clearInterval(timerId);clearInterval(logId);
+addLine("Réponse reçue, affichage du résultat...");
+const destination=new URL(response.url||form.action);
+history.replaceState({{}},"",destination.pathname+destination.search);
+document.open();document.write(html);document.close();
+}}catch(error){{
+clearInterval(timerId);clearInterval(logId);
+addLine("Le chargement dynamique a échoué, envoi classique...");
+form.submit();
+}}
+}}));
+</script></body></html>"""
+
+
+class ToolboxHandler(BaseHTTPRequestHandler):
+    server_version = "CyberToolboxGUI/2.13"
+
+    @property
+    def state(self) -> WebState:
+        return self.server.state  # type: ignore[attr-defined]
+
+    def do_GET(self) -> None:
+        route = urlparse(self.path)
+        if route.path == "/manifest.webmanifest":
+            self._send_asset(pwa_manifest(), "application/manifest+json")
+            return
+        if route.path == "/app-icon.svg":
+            self._send_asset(pwa_icon(), "image/svg+xml")
+            return
+        if route.path == "/service-worker.js":
+            self._send_asset(service_worker(), "text/javascript")
+            return
+        if not self.state.accepted and route.path != "/":
+            self._redirect("/")
+            return
+        handlers = {
+            "/": self._home,
+            "/kill-chain": self._kill_chain,
+            "/scanner": self._recon,
+            "/devices": self._profile,
+            "/monitoring": self._monitoring,
+            "/missions": self._missions,
+            "/operations": self._operations,
+            "/profile": self._profile,
+            "/recon": self._recon,
+            "/headers": self._headers,
+            "/lab": self._lab,
+            "/wireless": self._wireless,
+            "/exposure": self._exposure,
+            "/map": self._map,
+            "/context": self._context,
+            "/tools": self._tools,
+            "/reports": self._reports,
+            "/report": lambda: self._report(route.query),
+            "/settings": self._settings,
+        }
+        handler = handlers.get(route.path)
+        if not handler:
+            self._send(render_layout("Introuvable", "<div class='notice error'>Page introuvable.</div>"), 404)
+            return
+        handler()
+
+    def do_POST(self) -> None:
+        size = int(self.headers.get("Content-Length", "0"))
+        data = parse_qs(self.rfile.read(size).decode("utf-8", errors="replace"))
+        route_path = urlparse(self.path).path
+        local_routes = {
+            "/profile",
+            "/recon",
+            "/recon-result",
+            "/headers",
+            "/lab",
+            "/wireless",
+            "/exposure",
+            "/missions",
+            "/context",
+            "/tools",
+            "/data",
+            "/topology",
+            "/settings",
+        }
+        if _field(data, "token") != self.state.token and route_path not in local_routes:
+            self._send(render_layout("Requête refusée", "<div class='notice error'>Jeton invalide.</div>"), 403)
+            return
+        handlers = {
+            "/accept": lambda: self._accept(data),
+            "/profile": lambda: self._run_profile(data),
+            "/recon": lambda: self._run_recon(data),
+            "/recon-result": lambda: self._run_recon_result(data),
+            "/headers": lambda: self._run_headers(data),
+            "/lab": self._prepare_lab,
+            "/wireless": lambda: self._run_wireless(data),
+            "/exposure": lambda: self._run_exposure(data),
+            "/missions": lambda: self._run_missions(data),
+            "/context": lambda: self._run_context(data),
+            "/tools": lambda: self._run_tools(data),
+            "/data": lambda: self._run_data(data),
+            "/topology": lambda: self._run_topology(data),
+            "/settings": lambda: self._save_settings(data),
+        }
+        handler = handlers.get(route_path)
+        if not handler:
+            self._send(render_layout("Introuvable", "<div class='notice error'>Action introuvable.</div>"), 404)
+            return
+        handler()
+
+    def _token(self) -> str:
+        return f'<input type="hidden" name="token" value="{escape(self.state.token)}">'
+
+    def _result(self, route: str) -> str:
+        if self.state.error:
+            return f"<div class='card full notice error'><strong>ERREUR</strong><br>{escape(self.state.error)}</div>"
+        if not self.state.result or self.state.result_route != route:
+            return ""
+        if route == "/recon":
+            body = _recon_result(self.state.result)
+            saved = bool(self.state.result.get("saved"))
+            keep_button = ""
+            if not saved:
+                keep_button = (
+                    f"<form method='post' action='/recon-result'>{self._token()}"
+                    "<input type='hidden' name='operation' value='keep'>"
+                    "<button type='submit'>CONSERVER LES DONNEES</button></form>"
+                )
+            report_link = "<a class='button' href='/rapports'>OUVRIR RAPPORTS</a>" if saved else ""
+            return (
+                "<div class='result-modal'><section class='result-panel'>"
+                "<header><div><span class='eyebrow'>Resultat scanner</span>"
+                f"<h2>{escape(self.state.result_title)}</h2></div>"
+                "<form method='post' action='/recon-result'>"
+                f"{self._token()}<input type='hidden' name='operation' value='discard'>"
+                "<button class='back-button' type='submit'>FERMER</button></form></header>"
+                f"{body}<div class='result-actions'>{keep_button}{report_link}"
+                f"<form method='post' action='/recon-result'>{self._token()}"
+                "<input type='hidden' name='operation' value='discard'>"
+                "<button class='danger' type='submit'>NE PAS CONSERVER</button></form>"
+                "</div></section></div>"
+            )
+        elif route == "/profile":
+            body = _profile_result(self.state.result)
+        elif route == "/wireless":
+            body = _wireless_result(self.state.result)
+        elif route == "/tools" and self.state.result.get("mode") == "log_or_demo":
+            body = _packet_result(self.state.result)
+        elif route == "/tools" and self.state.result.get("mode") == "qr_tool":
+            body = _qr_result(self.state.result)
+        elif route == "/tools" and self.state.result.get("mode") == "nfc_tool":
+            body = _nfc_result(self.state.result)
+        elif route == "/exposure" and self.state.result.get("mode") == "public_exposure":
+            body = _public_exposure_result(self.state.result)
+        else:
+            body = _value(self.state.result)
+        return f"<section class='card full'><h2>{escape(self.state.result_title)}</h2>{body}</section>"
+
+    def _home(self) -> None:
+        if not self.state.accepted:
+            body = f"""<section class="card full"><span class="eyebrow">Accès contrôlé</span>
+<h1>recon SC</h1><p>Observe. Profile. Correlate.</p><p>Cette console est réservée à l'apprentissage,
+aux laboratoires locaux et aux appareils explicitement autorisés.</p>
+<div class="notice">Les profils restent techniques. Ils ne servent pas à
+identifier, suivre ou surveiller une personne.</div><form method="post" action="/accept">
+{self._token()}<label class="check"><input type="checkbox" name="accepted" required>
+Je confirme respecter le périmètre autorisé et la législation applicable.</label>
+<button type="submit">INITIALISER LA SESSION</button></form></section>"""
+            self._send(render_layout("Autorisation", body, accepted=False))
+            return
+        settings = load_settings()
+        exposure = exposure_inventory()
+        history_count = len(list_history())
+        record_metrics = _records_metrics()
+        timeline = _timeline_preview(4)
+        kill_steps = [
+            ("Recon", "Observer Wi-Fi, Bluetooth, IP et HTTP.", "/scanner", "REC"),
+            ("Scan", "Identifier hotes actifs et ports TCP.", "/scanner", "SCN"),
+            ("Enum", "Transformer une cible en fiche appareil.", "/devices", "ENU"),
+            ("Analyse", "Lire DNS, TLS, journaux et fichiers.", "/tools?tool=core", "ANA"),
+            ("Hypotheses", "Proposer des axes defensifs.", "/reports", "HYP"),
+            ("Correlation", "Relier actifs, preuves et historique.", "/reports", "COR"),
+            ("Reco", "Prioriser les actions possibles.", "/reports", "REC"),
+            ("Rapport", "Restituer les constats autorises.", "/reports", "RAP"),
+        ]
+        kill_cards = "".join(
+            f'<a class="app" data-icon="{escape(icon)}" href="{href}"><strong>{escape(name)}</strong><span>{escape(text)}</span></a>'
+            for name, text, href, icon in kill_steps
+        )
+        body = f"""<div class="grid">
+<section class="dashboard-board" data-dashboard-board aria-label="Dashboard">
+<div class="dashboard-metrics">
+<article class="dash-metric"><span>Appareils observes</span><strong>{exposure['asset_count']:02d}</strong><small>{exposure['service_count']} services indexes</small></article>
+<article class="dash-metric"><span>Historiques</span><strong>{history_count}</strong><small>sessions et resultats</small></article>
+<article class="dash-metric"><span>Rapports</span><strong>{len(list_reports())}</strong><small>exports disponibles</small></article>
+<article class="dash-metric"><span>Theme actif</span><strong>{escape(settings.theme)}</strong><small>{escape(settings.app_color_mode)} / carte locale</small></article>
+</div>
+<article class="dash-tile dashboard-hero kill-zone" data-widget-id="kill-chain"><span>Parcours defensif</span>
+<p class="muted tile-detail">Collecter, transformer en donnee reutilisable, correler, puis restituer.</p>
+<div class="dashboard-scroll" data-scroll-panel><button class="dashboard-scroll-nav left" type="button" data-scroll-dir="-1">&#8249;</button>
+<div class="dashboard-kill-chain dashboard-scroll-track" data-scroll-track>{kill_cards}</div>
+<button class="dashboard-scroll-nav right" type="button" data-scroll-dir="1">&#8250;</button></div>
+<div class="widget-actions"><a href="/kill-chain">Ouvrir</a></div></article>
+<div class="dashboard-row">
+<article class="dash-tile dashboard-actions" data-widget-id="actions"><span>Actions rapides</span>
+<div class="dashboard-scroll vertical" data-scroll-panel data-scroll-axis="y"><button class="dashboard-scroll-nav left" type="button" data-scroll-dir="-1">&#8593;</button>
+<div class="dashboard-action-list dashboard-scroll-track" data-scroll-track>
+<a class="dashboard-action" href="/scanner"><span><strong>Scanner cible</strong><br>Choisir une ou plusieurs sources</span><b>Ouvrir</b></a>
+<a class="dashboard-action" href="/scanner?source_discover=1&source_ports=1&source_wifi=1&source_bluetooth=1&source_http=1"><span><strong>Recon complete</strong><br>Preset de collecte locale</span><b>Lancer</b></a>
+<a class="dashboard-action" href="/tools?tool=camera"><span><strong>Scan camera</strong><br>QR, image et preparation OCR</span><b>Ouvrir</b></a>
+<a class="dashboard-action" href="/tools?tool=packet"><span><strong>Packet Observer</strong><br>Lire DNS, TCP, ARP et logs</span><b>Ouvrir</b></a>
+<a class="dashboard-action" href="/reports"><span><strong>Rapports</strong><br>Timeline, artefacts, correlations</span><b>Voir</b></a>
+</div><button class="dashboard-scroll-nav right" type="button" data-scroll-dir="1">&#8595;</button></div></article>
+<article class="dash-tile dashboard-activity" data-widget-id="records"><span>Donnees reutilisables</span>
+<div class="tile-detail">{record_metrics}</div><div class="widget-actions"><a href="/reports">Ouvrir</a></div></article>
+<article class="dash-tile dashboard-activity" data-widget-id="timeline"><span>Timeline recente</span>
+<div class="tile-detail">{timeline}</div><div class="widget-actions"><a href="/reports#timeline">Ouvrir</a></div></article>
+</div>
+<article class="dash-tile dashboard-modules" data-widget-id="modules"><span>Modules</span>
+<div class="dashboard-scroll" data-scroll-panel><button class="dashboard-scroll-nav left" type="button" data-scroll-dir="-1">&#8249;</button>
+<div class="dashboard-module-rail dashboard-scroll-track" data-scroll-track>
+<a class="app" href="/devices"><strong>Appareils</strong><span>Profil et confiance</span></a>
+<a class="app" href="/monitoring"><strong>Monitoring</strong><span>Sante locale et exposition</span></a>
+<a class="app" href="/map"><strong>Carte</strong><span>Carte et topologie reseau</span></a>
+<a class="app" href="/tools?tool=core"><strong>Outils</strong><span>Systeme, hash, DNS, TLS</span></a>
+<a class="app" href="/missions"><strong>Missions</strong><span>Scenarios pedagogiques</span></a>
+<a class="app" href="/reports"><strong>Rapports</strong><span>{history_count} historiques / {len(list_reports())} rapports</span></a>
+</div><button class="dashboard-scroll-nav right" type="button" data-scroll-dir="1">&#8250;</button></div></article>
+</section></div>"""
+        self._send(render_layout("Accueil", body))
+        return
+
+    def _accept(self, data: dict[str, list[str]]) -> None:
+        if _checked(data, "accepted"):
+            self.state.accepted = True
+        self._redirect("/")
+
+    def _kill_chain(self) -> None:
+        steps = [
+            ("Reconnaissance", "Observer le réseau, le Wi-Fi, le Bluetooth et HTTP.", "/scanner"),
+            ("Scan", "Identifier les hôtes actifs et les ports exposés.", "/scanner"),
+            ("Énumération", "Transformer une cible en fiche appareil.", "/devices"),
+            ("Analyse", "Lire DNS, TLS, journaux, fichiers et configuration.", "/tools?tool=core"),
+            ("Hypothèses", "Formuler des axes défensifs sans exploitation active.", "/reports"),
+            ("Corrélation", "Relier actifs, preuves, historique et exposition.", "/reports"),
+            ("Recommandations", "Prioriser les corrections et limites de confiance.", "/reports"),
+            ("Rapport", "Restituer les constats et le périmètre autorisé.", "/reports"),
+        ]
+        cards = "".join(
+            f'<a class="app" href="{href}"><strong>{escape(name)}</strong><span>{escape(text)}</span></a>'
+            for name, text, href in steps
+        )
+        body = f"""<div class="grid"><section class="card full">
+<span class="eyebrow">Defensive workflow</span><h2>Kill chain recon SC</h2>
+<p>Chaque étape doit produire une donnée réutilisable : fiche, timeline,
+corrélation ou rapport. Les phases offensives restent théoriques ou limitées
+aux labs locaux autorisés.</p><div class="app-grid">{cards}</div></section>
+<section class="card full"><h2>Règle de périmètre</h2><p>Un SSID visible ne donne
+pas accès aux appareils du réseau. La découverte d'hôtes nécessite d'être
+connecté au réseau ou d'avoir une route explicitement autorisée.</p></section></div>"""
+        self._send(render_layout("Kill Chain", body))
+
+    def _monitoring(self) -> None:
+        exposure = exposure_inventory()
+        context = local_context()
+        body = f"""<div class="grid"><section class="card wide">
+<span class="eyebrow">Monitoring local</span><h2>État de la session</h2>
+{_value({"plateforme": context["platform"], "heure": context["time"], "zone": context["timezone"]})}
+</section><section class="card"><span class="eyebrow">Exposition</span>
+<div class="metric">{exposure['asset_count']:02d}</div><p>actifs observés</p>
+<span class="badge">{exposure['service_count']} services</span></section>
+<section class="card full"><h2>Suites possibles</h2><div class="app-grid">
+<a class="app" href="/tools?tool=core"><strong>Audit local</strong><span>Santé système et configuration</span></a>
+<a class="app" href="/exposure"><strong>Inventaire</strong><span>Actifs et services collectés</span></a>
+<a class="app" href="/reports"><strong>Rapports</strong><span>Historique et restitution</span></a>
+</div></section></div>"""
+        self._send(render_layout("Monitoring", body))
+
+    def _missions(self) -> None:
+        feedback = ""
+        if self.state.message:
+            feedback = f'<div class="notice">{escape(self.state.message)}</div>'
+            self.state.message = ""
+        elif self.state.error:
+            feedback = f'<div class="notice error">{escape(self.state.error)}</div>'
+            self.state.error = ""
+        missions = list_missions()
+        mission_count = len(missions)
+        template_cards = "".join(
+            "<article class='scanner-card'>"
+            f"<div class='tool-head'><span class='quick-icon'>MIS</span><div><h3>{escape(str(item['name']))}</h3>"
+            f"<p class='muted'>{escape(str(item['objective']))}</p></div></div>"
+            f"<div class='meta-row'><span class='risk-badge'>lab</span><span class='status-badge'>{escape(str(item['scope']))}</span></div>"
+            f"<details><summary>Etapes</summary>{_value(item.get('steps', []))}</details>"
+            f"<details><summary>Preuves attendues</summary>{_value(item.get('expected_evidence', []))}</details>"
+            f"<p class='muted'>{escape(str(item['safety']))}</p>"
+            f"<form method='post' action='/missions'>{self._token()}"
+            f"<input type='hidden' name='template_id' value='{escape(str(item['id']))}'>"
+            "<button type='submit'>CREER LA MISSION</button></form></article>"
+            for item in mission_templates()
+        )
+        body = f"""{feedback}<div class="grid"><section class="card wide">
+<span class="eyebrow">Labs autorisés</span><h2>Missions</h2>
+<p>Scénarios courts pour apprendre à collecter, lire et corréler des preuves.
+Les missions offensives restent simulées, offline ou locales.</p>
+<a class="button" href="/lab">PRÉPARER UN LAB LOCAL</a></section>
+<section class="card"><span class="eyebrow">Progression</span>
+<div class="metric">{mission_count:02d}</div><p>missions enregistrées</p></section>
+<section class="card full"><h2>Missions guidees</h2><div class="scanner-grid">{template_cards}</div></section>
+<section class="card full"><h2>Parcours proposés</h2><div class="app-grid">
+<a class="app" href="/scanner"><strong>Mission réseau</strong><span>Découvrir puis profiler un actif autorisé</span></a>
+<a class="app" href="/wireless"><strong>Mission sans-fil</strong><span>Observer Wi-Fi/Bluetooth sans connexion</span></a>
+<a class="app" href="/lab"><strong>Mission lab</strong><span>Journaux, payload factice et script local</span></a>
+</div></section></div>"""
+        self._send(render_layout("Missions", body))
+
+    def _run_missions(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            path = create_mission_from_template(_field(data, "template_id"))
+            self.state.message = f"Mission creee : {path.name}"
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/missions")
+
+    def _operations(self) -> None:
+        body = """<div class="grid"><section class="card wide">
+<span class="eyebrow">Guided operations</span><h2>Choisir un parcours</h2>
+<p>Les opérations relient plusieurs modules dans un ordre compréhensible.
+Chaque étape explique l'objectif, la preuve obtenue et la suite logique.</p>
+<div class="app-grid">
+<a class="app" href="/lab"><strong>Signal fantôme</strong>
+<span>Journaux, payload factice et script risqué</span></a>
+<a class="app" href="/recon"><strong>Mission réseau</strong>
+<span>Découverte, cible, ports et conservation</span></a>
+<a class="app" href="/profile"><strong>Profil autorisé</strong>
+<span>Nom, type probable, services et confiance</span></a>
+</div></section><section class="card"><h2>Mode d'emploi</h2>
+<ol><li>Définir le périmètre autorisé.</li><li>Collecter une preuve.</li>
+<li>Interpréter sans surévaluer le résultat.</li><li>Conserver ou produire un rapport.</li></ol>
+<p class="muted">Le scénario Watchdog interactif complet reste aussi disponible
+dans le terminal avec <code>run.bat watchdog</code>.</p></section></div>"""
+        self._send(render_layout("Opérations guidées", body))
+
+    def _recon(self) -> None:
+        settings = load_settings()
+        default_network = local_ipv4_network()
+        form_state = {
+            "source_discover": False,
+            "source_ports": False,
+            "source_wifi": True,
+            "source_bluetooth": False,
+            "source_http": False,
+            "authorized": self.state.scope_authorized,
+            "subject": "",
+            "network": default_network,
+            "target": "",
+            "ports": settings.default_ports,
+            "view": "category",
+            **self.state.recon_form,
+        }
+        if self.state.scope_authorized:
+            form_state["authorized"] = True
+
+        def checked(name: str) -> str:
+            return " checked" if form_state.get(name) else ""
+
+        def selected(value: str) -> str:
+            return " selected" if form_state.get("view") == value else ""
+
+        if not any(
+            form_state.get(name)
+            for name in ("source_discover", "source_ports", "source_wifi", "source_bluetooth", "source_http")
+        ):
+            form_state["source_wifi"] = True
+        subject_value = escape(str(form_state.get("subject", "")))
+        network_value = escape(str(form_state.get("network") or default_network))
+        target_value = escape(str(form_state.get("target") or form_state.get("subject") or ""))
+        ports_value = escape(str(form_state.get("ports") or settings.default_ports))
+        view_select = f"""<label>Vue des resultats<select name="view">
+<option value="category"{selected("category")}>Categories separees</option>
+<option value="table"{selected("table")}>Tableaux</option>
+<option value="list"{selected("list")}>Liste avec actions</option>
+</select></label>"""
+        consent = (
+            f'<label class="check"><input type="checkbox" name="authorized"{checked("authorized")}>'
+            "Je confirme disposer de l'autorisation sur ce perimetre. "
+            "Ce choix reste actif pendant la session locale.</label>"
+        )
+        body = f"""<div class="grid"><section class="card full"><span class="eyebrow">Scanner</span>
+<h2>Recon autorisee</h2><p class="muted">Choisissez un ou plusieurs modules. Les champs utiles apparaissent ensuite,
+puis le resultat s'ouvre dans une fenetre. La conservation des donnees se decide apres lecture.</p>
+<form method="post" action="/recon">{self._token()}
+<div class="quick-grid">
+<label class="quick-toggle"><input type="checkbox" name="source_discover"{checked("source_discover")}>
+<span class="quick-icon">IP</span><strong>Reseau IP</strong><span>Hotes actifs</span></label>
+<label class="quick-toggle"><input type="checkbox" name="source_ports"{checked("source_ports")}>
+<span class="quick-icon">TCP</span><strong>Ports TCP</strong><span>Services ouverts</span></label>
+<label class="quick-toggle"><input type="checkbox" name="source_wifi"{checked("source_wifi")}>
+<span class="quick-icon">WIFI</span><strong>Wi-Fi</strong><span>Reseaux visibles</span></label>
+<label class="quick-toggle"><input type="checkbox" name="source_bluetooth"{checked("source_bluetooth")}>
+<span class="quick-icon">BT</span><strong>Bluetooth</strong><span>Inventaire OS</span></label>
+<label class="quick-toggle"><input type="checkbox" name="source_http"{checked("source_http")}>
+<span class="quick-icon">HTTP</span><strong>HTTP</strong><span>Entetes passifs</span></label>
+<a class="quick-toggle" href="/tools?tool=packet"><span class="quick-icon">PKT</span><strong>Packet Observer</strong>
+<span>Logs reseau pedagogiques</span></a>
+</div><input type="hidden" name="subject" value="{subject_value}">
+<div class="recon-fields"><label data-recon-field="network">Reseau local autorise
+<input name="network" value="{network_value}" placeholder="192.168.1.0/24"></label>
+<label data-recon-field="target">Cible IP, nom local ou URL
+<input name="target" value="{target_value}" placeholder="192.168.1.25 ou http://192.168.1.25"></label>
+<label data-recon-field="ports">Ports
+<input name="ports" value="{ports_value}" placeholder="22,80,443 ou 1-1024"></label></div>
+{view_select}{consent}<button type="submit">LANCER LE SCAN</button></form></section>
+<section class="card full"><h2>Conditions</h2><ul class="clean">
+<li>IP/ports : uniquement reseau prive, localhost ou cible explicitement autorisee.</li>
+<li>Wi-Fi : necessite les droits systeme/localisation selon Windows, Linux ou Termux.</li>
+<li>Bluetooth : inventaire OS uniquement, sans appairage ni interaction active.</li>
+<li>HTTP : lecture passive d'entetes sur une URL fournie.</li>
+<li>Trafic : lecture pedagogique prevue, sans dechiffrement HTTPS.</li></ul></section>
+{self._result("/recon")}</div>"""
+        self._send(render_layout("Scanner", body))
+        return
+
+    def _run_recon(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        started = time.monotonic()
+        try:
+            settings = load_settings()
+            self.state.recon_form = {
+                "source_discover": _checked(data, "source_discover"),
+                "source_ports": _checked(data, "source_ports"),
+                "source_wifi": _checked(data, "source_wifi"),
+                "source_bluetooth": _checked(data, "source_bluetooth"),
+                "source_http": _checked(data, "source_http"),
+                "authorized": _checked(data, "authorized"),
+                "subject": _field(data, "subject"),
+                "network": _field(data, "network"),
+                "target": _field(data, "target"),
+                "ports": _field(data, "ports", settings.default_ports),
+                "view": _field(data, "view", "category"),
+            }
+            authorized = _checked(data, "authorized") or self.state.scope_authorized
+            if _checked(data, "authorized"):
+                self.state.scope_authorized = True
+            if not authorized:
+                raise ValueError("L'autorisation explicite est obligatoire.")
+            subject = _field(data, "subject")
+            network_subject = _field(data, "network") or subject
+            target_subject = _field(data, "target") or subject
+            view = _field(data, "view", "category")
+            categories: dict[str, dict[str, Any]] = {}
+            suggestions: list[str] = []
+            ran_any = False
+            if _checked(data, "source_discover"):
+                if not network_subject:
+                    raise ValueError("Indiquez un réseau privé pour la découverte IP.")
+                results, engine = discover_hosts(network_subject, settings.prefer_nmap)
+                categories["network"] = {"title": "Réseau IP", "engine": engine, "items": results}
+                suggestions.append("Sélectionner une IP découverte puis ouvrir Profiler ou Scanner ports.")
+                ran_any = True
+                # History is now saved only after the operator confirms the result modal.
+            if _checked(data, "source_ports"):
+                if not target_subject:
+                    raise ValueError("Indiquez une cible privée pour le scan de ports.")
+                from .safety import parse_ports
+
+                ports = _field(data, "ports", settings.default_ports)
+                results, engine = scan_ports(
+                    target_subject,
+                    parse_ports(ports),
+                    settings.scan_timeout,
+                    settings.prefer_nmap,
+                )
+                categories["ports"] = {
+                    "title": "Ports TCP",
+                    "engine": engine,
+                    "items": [{"address": target_subject, **item} for item in results],
+                }
+                suggestions.append("Ouvrir HTTP pour les ports web ou Profiler pour consolider l'actif.")
+                ran_any = True
+                # History is now saved only after the operator confirms the result modal.
+            if _checked(data, "source_wifi"):
+                wifi = wifi_scan()
+                categories["wifi"] = {
+                    "title": "Wi-Fi visible",
+                    "engine": str(wifi.get("engine", "")),
+                    "description": str(wifi.get("description", "")),
+                    "limitations": wifi.get("limitations", []),
+                    "items": wifi.get("networks", []),
+                }
+                suggestions.append("Contrôler le chiffrement Wi-Fi et documenter les réseaux ouverts ou faibles.")
+                ran_any = True
+            if _checked(data, "source_bluetooth"):
+                bluetooth = bluetooth_inventory()
+                categories["bluetooth"] = {
+                    "title": "Bluetooth",
+                    "engine": str(bluetooth.get("engine", "")),
+                    "description": str(bluetooth.get("description", "")),
+                    "limitations": bluetooth.get("limitations", []),
+                    "items": bluetooth.get("items", []),
+                }
+                suggestions.append("Profiler uniquement les appareils Bluetooth explicitement autorisés.")
+                ran_any = True
+            if _checked(data, "source_http"):
+                if not target_subject:
+                    raise ValueError("Indiquez une URL pour l'analyse HTTP passive.")
+                url = target_subject if "://" in target_subject else f"http://{target_subject}"
+                status, headers = fetch_headers(url)
+                categories["http"] = {
+                    "title": "HTTP",
+                    "engine": f"HEAD {status}",
+                    "items": analyze_headers(headers, url.startswith("https://")),
+                }
+                suggestions.append("Ouvrir l'audit HTTP détaillé pour conserver la cible et les en-têtes.")
+                ran_any = True
+            if not ran_any:
+                raise ValueError("Activez au moins une source de reconnaissance.")
+            records = {"artifacts": [], "events": [], "correlations": []}
+            self.state.result_title = "Résultat de reconnaissance"
+            self.state.result_route = "/recon"
+            self.state.result = {
+                "subject": target_subject or network_subject,
+                "save_subject": target_subject or network_subject,
+                "network": network_subject,
+                "target": target_subject,
+                "view": view,
+                "duration_seconds": round(time.monotonic() - started, 2),
+                "categories": categories,
+                "suggestions": suggestions,
+                "saved": False,
+                "records": {
+                    "artifacts": len(records["artifacts"]),
+                    "events": len(records["events"]),
+                    "correlations": len(records["correlations"]),
+                },
+            }
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/recon")
+
+    def _run_recon_result(self, data: dict[str, list[str]]) -> None:
+        operation = _field(data, "operation", "discard")
+        if operation == "keep":
+            result = self.state.result if self.state.result_route == "/recon" else None
+            if not result:
+                self.state.error = "Aucun resultat de reconnaissance a conserver."
+                self._redirect("/recon")
+                return
+            categories = result.get("categories", {})
+            if not isinstance(categories, dict):
+                self.state.error = "Resultat de reconnaissance invalide."
+                self._redirect("/recon")
+                return
+            saved = save_recon_records(
+                categories,
+                subject=str(result.get("save_subject") or result.get("subject") or "scanner"),
+                scope="local_authorized",
+            )
+            result["records"] = {
+                "artifacts": len(saved["artifacts"]),
+                "events": len(saved["events"]),
+                "correlations": len(saved["correlations"]),
+            }
+            result["saved"] = True
+            self.state.result = result
+            self.state.message = "Donnees de reconnaissance conservees."
+        else:
+            self._clear()
+            self.state.message = "Resultat ignore."
+        self._redirect("/recon")
+
+    def _profile(self) -> None:
+        settings = load_settings()
+        devices = _device_cards()
+        body = f"""<div class="grid"><section class="card full">
+<span class="eyebrow">Inventaire</span><h2>Appareils observes</h2>
+<p class="muted">Liste compacte construite depuis les scans conserves et les artefacts JSON.
+Les hypotheses restent techniques et peuvent etre faibles si peu d'indices sont disponibles.</p>
+{devices}</section><section class="card wide">
+<h2>Creer une fiche appareil</h2><p class="muted">Le scan est limite aux adresses
+privees et locales. Nmap est utilise s'il est disponible.</p>
+<form method="post" action="/profile">{self._token()}
+<label>Cible<input name="target" placeholder="192.168.1.25 ou localhost" required></label>
+<label>Ports<input name="ports" value="{escape(settings.default_ports)}" required></label>
+<label class="check"><input type="checkbox" name="authorized" required>
+Je dispose de l'autorisation du proprietaire ou responsable.</label>
+<label class="check"><input type="checkbox" name="keep" checked>Conserver la fiche en artefact/timeline.</label>
+<label class="check"><input type="checkbox" name="report">Generer un rapport.</label>
+<button type="submit">LANCER LE PROFIL</button></form></section>
+<section class="card"><h2>Filtres rapides</h2><div class="app-grid">
+<a class="app" href="/devices"><strong>Actifs</strong><span>Appareils vus recemment</span></a>
+<a class="app" href="/reports"><strong>Inconnus</strong><span>Confiance faible a correler</span></a>
+<a class="app" href="/reports"><strong>Critiques</strong><span>Ports sensibles ou alertes</span></a>
+<a class="app" href="/reports"><strong>Favoris</strong><span>A brancher aux missions</span></a>
+</div></section>
+{self._result("/profile")}</div>"""
+        self._send(render_layout("Appareils", body))
+
+    def _run_profile(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            if not _checked(data, "authorized"):
+                raise ValueError("L'autorisation explicite est obligatoire.")
+            settings = load_settings()
+            profile = build_device_profile(
+                _field(data, "target"),
+                _field(data, "ports", settings.default_ports),
+                settings.scan_timeout,
+                settings.prefer_nmap,
+                settings.internet_correlation,
+            )
+            result = asdict(profile)
+            create_report = settings.report_mode == "auto" or (
+                settings.report_mode != "off" and _checked(data, "report")
+            )
+            if create_report:
+                services = ", ".join(
+                    f"{item.get('port')}/{item.get('service', 'inconnu')}"
+                    for item in profile.services
+                ) or "Aucun service détecté"
+                path = save_professional_report(
+                    f"Profil technique {profile.address}",
+                    f"Appareil {profile.address}, autorisation confirmée.",
+                    f"Type probable : {profile.device_type} ({profile.confidence}).",
+                    [{"severity": "information", "title": "Services observés",
+                      "evidence": services, "impact": "Surface réseau à valider."}],
+                    ["Désactiver les services inutiles.", "Maintenir les logiciels à jour."],
+                    "Estimation technique, sans identification personnelle.",
+                )
+                result["rapport"] = str(path)
+            if _checked(data, "keep"):
+                sensitive_ports = {21, 23, 445, 3389, 5900, 6379}
+                has_sensitive_port = False
+                for item in profile.services:
+                    try:
+                        has_sensitive_port = int(item.get("port", 0)) in sensitive_ports
+                    except (TypeError, ValueError):
+                        has_sensitive_port = False
+                    if has_sensitive_port:
+                        break
+                artifact = Artifact(
+                    kind="device_profile",
+                    source=str(profile.scan_engine or "profiler"),
+                    title=f"Profil {profile.address}",
+                    summary=f"{profile.address} : {profile.device_type} ({profile.confidence})",
+                    value=profile.address,
+                    confidence=profile.confidence,
+                    risk="attention" if has_sensitive_port else "info",
+                    scope="local_authorized",
+                    tags=["device", "profile"],
+                    data=result,
+                )
+                save_record(artifact)
+                save_record(
+                    TimelineEvent(
+                        source="profiler",
+                        event_type="device_profile",
+                        description=artifact.summary,
+                        level="attention" if artifact.risk == "attention" else "info",
+                        artifact_id=artifact.id,
+                        link="/devices",
+                    )
+                )
+                result["artefact"] = artifact.id
+            self.state.result_title = "Résultat du profil"
+            self.state.result_route = "/profile"
+            self.state.result = result
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/profile")
+
+    def _headers(self) -> None:
+        body = f"""<div class="grid"><section class="card wide"><h2>Analyse passive</h2>
+<p class="muted">Une requête HEAD examine la configuration exposée. Aucune
+injection n'est tentée.</p><form method="post" action="/headers">{self._token()}
+<label>URL<input type="url" name="url" placeholder="https://example.org" required></label>
+<button type="submit">ANALYSER</button></form></section>
+<section class="card"><h2>Contrôles</h2><ul class="clean"><li>CSP</li><li>HSTS</li>
+<li>Referrer-Policy</li><li>Permissions-Policy</li></ul></section>
+{self._result("/headers")}</div>"""
+        self._send(render_layout("Audit HTTP", body))
+
+    def _run_headers(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            url = _field(data, "url")
+            status, headers = fetch_headers(url)
+            self.state.result_title = "Configuration HTTP"
+            self.state.result_route = "/headers"
+            self.state.result = {
+                "URL": url,
+                "Statut": status,
+                "Constats": analyze_headers(headers, url.startswith("https://")),
+                "En-têtes": headers,
+            }
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/headers")
+
+    def _lab(self) -> None:
+        body = f"""<div class="grid"><section class="card wide">
+<h2>Zone d'entraînement locale</h2><p>Générez un journal suspect, un payload
+texte et un script volontairement risqué.</p><form method="post" action="/lab">
+{self._token()}<button type="submit">PRÉPARER LES ARTEFACTS</button></form></section>
+<section class="card"><h2>Garantie</h2><p class="muted">Aucun payload n'est
+exécuté. Tout reste dans <code>lab_workspace</code>.</p></section>
+{self._result("/lab")}</div>"""
+        self._send(render_layout("Laboratoire local", body))
+
+    def _prepare_lab(self) -> None:
+        self._clear()
+        try:
+            artifacts = prepare_lab(PROJECT_ROOT / "lab_workspace")
+            self.state.result_title = "Artefacts prêts"
+            self.state.result_route = "/lab"
+            self.state.result = {
+                name: str(path.relative_to(PROJECT_ROOT)) for name, path in artifacts.items()
+            }
+        except OSError as exc:
+            self.state.error = str(exc)
+        self._redirect("/lab")
+
+    def _reports(self) -> None:
+        feedback = ""
+        if self.state.message:
+            feedback = f'<div class="notice">{escape(self.state.message)}</div>'
+            self.state.message = ""
+        elif self.state.error:
+            feedback = f'<div class="notice error">{escape(self.state.error)}</div>'
+            self.state.error = ""
+
+        def actions(scope: str, name: str, current_label: str) -> str:
+            return f"""<div class="data-actions">
+<form method="post" action="/data">{self._token()}
+<input type="hidden" name="scope" value="{scope}">
+<input type="hidden" name="name" value="{escape(name)}">
+<input type="hidden" name="operation" value="rename">
+<label>Nouveau nom<input name="new_name" value="{escape(current_label)}" required></label>
+<button type="submit">RENOMMER</button></form>
+<form class="compact" method="post" action="/data"
+data-confirm="Supprimer définitivement cet élément ?">{self._token()}
+<input type="hidden" name="scope" value="{scope}">
+<input type="hidden" name="name" value="{escape(name)}">
+<input type="hidden" name="operation" value="delete">
+<button class="danger" type="submit">SUPPRIMER</button></form></div>"""
+
+        report_items = "".join(
+            f"""<li><strong><a href="/report?name={quote(path.name)}">
+{escape(path.name)}</a></strong>{actions("report", path.name, path.stem)}</li>"""
+            for path in list_reports()
+        ) or "<li class='muted'>Aucun rapport disponible.</li>"
+
+        history_items = []
+        for path in list_history():
+            payload = load_history(path)
+            history_items.append(
+                f"""<li><strong>{escape(history_display_name(payload))}</strong>
+<span class="muted"> · {escape(str(payload.get("kind", "")))}</span>
+{actions("history", path.name, str(payload.get("label", "")))}</li>"""
+            )
+        histories = "".join(history_items) or "<li class='muted'>Aucun historique disponible.</li>"
+
+        mission_items = "".join(
+            f"<li><strong>{escape(path.stem)}</strong>{actions('mission', path.name, path.stem)}</li>"
+            for path in list_missions()
+        ) or "<li class='muted'>Aucune mission sauvegardée.</li>"
+
+        def record_items(record_type: str, scope: str) -> str:
+            items = []
+            for path in list_records(record_type):
+                payload = load_record(path)
+                label = record_display_name(payload)
+                items.append(
+                    f"""<li><strong>{escape(label)}</strong><div class="data-actions">
+<form class="compact" method="post" action="/data"
+data-confirm="Supprimer définitivement cet élément ?">{self._token()}
+<input type="hidden" name="scope" value="{scope}">
+<input type="hidden" name="name" value="{escape(path.name)}">
+<input type="hidden" name="operation" value="delete">
+<button class="danger" type="submit">SUPPRIMER</button></form></div></li>"""
+                )
+            return "".join(items) or "<li class='muted'>Aucune donnee disponible.</li>"
+
+        artifact_items = record_items("artifact", "artifact")
+        event_items = record_items("event", "event")
+        correlation_items = record_items("correlation", "correlation")
+
+        delete_all = f"""<form method="post" action="/data"
+data-confirm="Supprimer tous les rapports, historiques et missions ? Cette action est irréversible.">
+{self._token()}<input type="hidden" name="scope" value="all">
+<input type="hidden" name="operation" value="delete_all">
+<button class="danger" type="submit">TOUT SUPPRIMER</button></form>"""
+        report_tools = f"""<div class="action-row">
+<form class="compact" method="post" action="/data">{self._token()}
+<input type="hidden" name="scope" value="records">
+<input type="hidden" name="operation" value="correlate">
+<button type="submit">GENERER CORRELATIONS</button></form>
+<form class="compact" method="post" action="/data">{self._token()}
+<input type="hidden" name="scope" value="records">
+<input type="hidden" name="operation" value="build_report">
+<button type="submit">COMPILER RAPPORT</button></form></div>"""
+        body = f"""{feedback}<section class="card full" data-tabs>
+<h2>Rapports et preuves locales</h2><p class="muted">Consultez, renommez ou supprimez les
+éléments stockés par recon SC.</p><div class="tabs">
+<button class="tab-button active" type="button" data-tab="reports">Rapports</button>
+<button class="tab-button" type="button" data-tab="history">Historiques</button>
+<button class="tab-button" type="button" data-tab="artifacts">Artefacts</button>
+<button class="tab-button" type="button" data-tab="timeline">Timeline</button>
+<button class="tab-button" type="button" data-tab="correlations">Corrélations</button>
+<button class="tab-button" type="button" data-tab="missions">Missions</button>
+<button class="tab-button" type="button" data-tab="cleanup">Nettoyage</button></div>
+<div class="tab-panel active" data-panel="reports">{report_tools}<ul class="clean">{report_items}</ul></div>
+<div class="tab-panel" data-panel="history"><ul class="clean">{histories}</ul></div>
+<div class="tab-panel" data-panel="artifacts">{_artifact_board()}<h3>Gestion</h3><ul class="clean">{artifact_items}</ul></div>
+<div class="tab-panel" data-panel="timeline">{_timeline_board()}<h3>Gestion</h3><ul class="clean">{event_items}</ul></div>
+<div class="tab-panel" data-panel="correlations">{_correlation_board()}<h3>Gestion</h3><ul class="clean">{correlation_items}</ul></div>
+<div class="tab-panel" data-panel="missions"><ul class="clean">{mission_items}</ul></div>
+<div class="tab-panel" data-panel="cleanup"><div class="notice error">
+Cette action efface toutes les données générées, mais pas le code du projet.</div>
+{delete_all}</div></section>"""
+        self._send(render_layout("Rapports", body))
+
+    def _run_data(self, data: dict[str, list[str]]) -> None:
+        self.state.message = ""
+        self.state.error = ""
+        scope = _field(data, "scope")
+        operation = _field(data, "operation")
+        name = _field(data, "name")
+        try:
+            if operation == "delete_all" and scope == "all":
+                histories = delete_all_history()
+                reports = delete_all_reports()
+                missions = delete_all_missions()
+                delete_all_records()
+                self.state.message = (
+                    f"{histories} historique(s), {reports} rapport(s) et "
+                    f"{missions} mission(s) supprimé(s)."
+                )
+            elif scope == "records":
+                if operation == "correlate":
+                    stats = generate_correlations_from_records()
+                    self.state.message = (
+                        f"{stats['generated']} correlation(s) ajoutee(s) "
+                        f"depuis {stats['artifacts']} artefact(s)."
+                    )
+                elif operation == "build_report":
+                    path = _save_records_report()
+                    self.state.message = f"Rapport compile : {path.name}"
+                else:
+                    raise ValueError("Action de donnees structurees inconnue.")
+            elif scope == "report":
+                path = self._stored_path(list_reports(), name)
+                if operation == "rename":
+                    renamed = rename_report(path, _field(data, "new_name"))
+                    self.state.message = f"Rapport renommé : {renamed.name}"
+                elif operation == "delete":
+                    delete_report(path)
+                    self.state.message = "Rapport supprimé."
+                else:
+                    raise ValueError("Action de rapport inconnue.")
+            elif scope == "history":
+                path = self._stored_path(list_history(), name)
+                if operation == "rename":
+                    rename_history(path, _field(data, "new_name"))
+                    self.state.message = "Historique renommé."
+                elif operation == "delete":
+                    delete_history(path)
+                    self.state.message = "Historique supprimé."
+                else:
+                    raise ValueError("Action d'historique inconnue.")
+            elif scope == "mission":
+                path = self._stored_path(list_missions(), name)
+                if operation == "rename":
+                    renamed = rename_mission(path, _field(data, "new_name"))
+                    self.state.message = f"Mission renommée : {renamed.name}"
+                elif operation == "delete":
+                    delete_mission(path)
+                    self.state.message = "Mission supprimée."
+                else:
+                    raise ValueError("Action de mission inconnue.")
+            elif scope in {"artifact", "event", "correlation"}:
+                path = self._stored_path(list_records(scope), name)
+                if operation == "delete":
+                    delete_record(path)
+                    self.state.message = "Donnee structuree supprimee."
+                else:
+                    raise ValueError("Action de donnee structuree inconnue.")
+            else:
+                raise ValueError("Type de donnée inconnu.")
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/reports")
+
+    @staticmethod
+    def _stored_path(paths: list[Path], name: str) -> Path:
+        path = next((item for item in paths if item.name == name), None)
+        if path is None:
+            raise ValueError("Élément enregistré introuvable.")
+        return path
+
+    def _exposure(self) -> None:
+        inventory = exposure_inventory()
+        body = f"""<div class="grid"><section class="card full">
+<span class="eyebrow">Local exposure index</span><h2>Inventaire d'exposition local</h2>
+<div class="notice">Aucune recherche Internet : cette page indexe uniquement les
+scans privés explicitement autorisés et conservés localement.</div>
+{_value(inventory)}</section>
+<section class="card full"><span class="eyebrow">Lecture publique uniquement</span>
+<h2>Public Exposure Viewer</h2><p class="muted">Liste et previsualise uniquement une
+ressource deja accessible sans contournement : URL HTTP, dossier local ou partage
+fourni par l'utilisateur. Aucun brute force, fuzzing, crawling profond ou
+aspiration massive.</p>
+<form method="post" action="/exposure">{self._token()}
+<label>URL, dossier ou partage public<input name="target"
+placeholder="http://192.168.1.20/public/ ou \\\\serveur\\partage"></label>
+<label class="check"><input type="checkbox" name="authorized" required>Je confirme que cette ressource est publique ou autorisee.</label>
+<label class="check"><input type="checkbox" name="keep" checked>Ajouter aux donnees structurees et a la timeline.</label>
+<button type="submit">INSPECTER</button></form></section>
+{self._result("/exposure")}</div>"""
+        self._send(render_layout("Exposition locale", body))
+
+    def _run_exposure(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            if not _checked(data, "authorized"):
+                raise ValueError("Autorisation requise pour inspecter cette ressource.")
+            result = inspect_public_exposure(_field(data, "target"))
+            if _checked(data, "keep"):
+                result["records"] = _save_public_exposure_record(result)
+            self.state.result_title = "Public Exposure Viewer"
+            self.state.result_route = "/exposure"
+            self.state.result = result
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/exposure")
+
+    def _run_topology(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            operation = _field(data, "operation", "scan")
+            if operation == "report":
+                if not self.state.topology:
+                    raise ValueError("Lancez d'abord une topologie avant de creer un rapport.")
+                assets = self.state.topology.get("assets", {})
+                path = save_professional_report(
+                    "Topologie reseau",
+                    str(self.state.topology.get("network", "reseau local")),
+                    f"Vue topologique de {len(assets) if isinstance(assets, dict) else 0} appareil(s) observes.",
+                    [
+                        {
+                            "title": str(address),
+                            "severity": "information",
+                            "evidence": str(asset),
+                            "impact": "Observation de cartographie locale.",
+                        }
+                        for address, asset in (assets.items() if isinstance(assets, dict) else [])
+                    ],
+                    ["Relancer la topologie avant une restitution finale.", "Verifier les services exposes avec les outils autorises."],
+                    "Vue generee depuis une session locale autorisee, sans localisation physique.",
+                )
+                self.state.message = f"Rapport topologie cree : {path.name}"
+                self._redirect("/map?tab=network")
+                return
+            settings = load_settings()
+            network = local_ipv4_network()
+            if not network:
+                raise ValueError("Aucun reseau IPv4 prive detecte pour la topologie.")
+            results, engine = discover_hosts(network, settings.prefer_nmap)
+            self.state.topology = _topology_from_discovery(network, engine, results)
+            saved = save_recon_records(
+                {"network": {"title": "Topologie reseau", "engine": engine, "items": results}},
+                subject=network,
+                scope="local_authorized",
+            )
+            self.state.scope_authorized = True
+            self.state.message = (
+                f"Topologie mise a jour : {len(results)} hote(s), "
+                f"{len(saved['artifacts'])} artefact(s)."
+            )
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/map?tab=network")
+
+    def _map(self) -> None:
+        active_tab = parse_qs(urlparse(self.path).query).get("tab", ["geo"])[0]
+        if active_tab not in {"geo", "network"}:
+            active_tab = "geo"
+        geo_active = " active" if active_tab == "geo" else ""
+        network_active = " active" if active_tab == "network" else ""
+        body = f"""<div class="grid"><section class="card full" data-tabs data-active="{active_tab}">
+<span class="eyebrow">Map console</span><h2>Cartographie</h2>
+<div class="tabs"><button class="tab-button{geo_active}" type="button"
+data-tab="geo">Carte géographique</button><button class="tab-button" type="button"
+data-tab="network">Topologie réseau</button></div>
+<div class="tab-panel{geo_active}" data-panel="geo">
+<div class="notice">La position est facultative, demandée par le navigateur et
+non enregistrée. Les appareils découverts sur le réseau ne sont jamais placés
+sur cette carte géographique.</div>
+<div class="geo-tools"><section class="geo-tool"><h3>Position</h3>
+<div class="geo-tool-row"><input id="map-latitude" type="number" step="any"
+placeholder="Latitude"><input id="map-longitude" type="number" step="any"
+placeholder="Longitude"></div><div class="geo-tool-row"><select id="map-layer" aria-label="Fond de carte">
+<option value="standard">Standard</option>
+<option value="topographic">Topographique / relief</option>
+<option value="cartoLight">CARTO clair</option>
+<option value="cartoDark">CARTO sombre</option>
+<option value="maplibre3d">Vue 3D plongeante</option>
+</select><select id="map-zoom" aria-label="Niveau de zoom">
+<option value="2">2</option><option value="3">3</option><option value="4">4</option>
+<option value="5">5</option><option value="6">6</option><option value="7">7</option>
+<option value="8">8</option><option value="9">9</option><option value="10">10</option>
+<option value="11">11</option><option value="12">12</option><option value="13">13</option>
+<option value="14">14</option><option value="15">15</option>
+<option value="16" selected>16</option><option value="17">17</option>
+<option value="18">18</option><option value="19">19</option>
+</select></div><div class="geo-actions"><button type="button"
+onclick="showGeoMap(document.getElementById('map-latitude').value,
+document.getElementById('map-longitude').value)">AFFICHER</button>
+<button type="button" onclick="locateMap()">UTILISER MA POSITION</button></div></section>
+<section class="geo-tool"><h3>Adresse</h3>
+<div class="geo-tool-row single"><input id="map-search" placeholder="Rechercher une adresse"></div>
+<div class="geo-actions"><button type="button" onclick="searchMapAddress()">RECHERCHER</button></div></section>
+<section class="geo-tool"><h3>Trajet</h3>
+<div class="geo-tool-row"><select id="route-start-mode" aria-label="Départ">
+<option value="current">Depart : marqueur actuel</option><option value="custom">Depart : adresse</option>
+</select><input id="route-start" placeholder="Adresse de départ si différente"></div>
+<div class="geo-tool-row"><input id="route-end" placeholder="Destination"><select id="route-profile" aria-label="Mode de trajet">
+<option value="driving">Voiture</option><option value="cycling">Vélo</option>
+<option value="walking">À pied</option></select></div>
+<div class="geo-actions"><button type="button" onclick="routeFromMap()">CALCULER UN TRAJET</button></div></section></div>
+<p id="geo-map-status" class="muted">Aucune position demandée.</p>
+<div class="geo-map-shell"><div class="geo-map" id="geo-map-frame" role="img"
+aria-label="Carte centrée sur la position choisie"></div>
+<div class="map-ui" aria-label="Contrôles de carte">
+<button class="map-mode-button" id="map-mode-cycle" type="button" title="Mode carte" onclick="cycleMapMode()">◐</button>
+<button type="button" title="Zoom avant" onclick="adjustGeoZoom(1)">+</button>
+<button type="button" title="Recentrer sur le marqueur" onclick="recenterGeoMap()">@</button>
+<button type="button" title="Zoom arrière" onclick="adjustGeoZoom(-1)">-</button>
+</div></div>
+<p class="muted">Molette ou pincement : zoom. Fond actif : <span id="map-attribution">aucun</span>. Données ©
+<a href="https://www.openstreetmap.org/copyright" target="_blank"
+rel="noreferrer">contributeurs OpenStreetMap</a>. Relief :
+<a href="https://opentopomap.org/" target="_blank"
+rel="noreferrer">OpenTopoMap</a>. CARTO :
+<a href="https://carto.com/attributions" target="_blank"
+rel="noreferrer">attributions</a>. Vue 3D : MapLibre GL JS avec rendu vectoriel local.</p></div>
+<div class="tab-panel{network_active}" data-panel="network">
+<div class="notice">La topologie affiche uniquement le resultat de cette session. Cliquez sur le cercle Reseau IP pour lancer ou forcer une mise a jour.</div>
+<div class="filter-row"><label class="check"><input id="topology-auto-refresh" type="checkbox"> Mise a jour automatique</label>
+<label>Delai<select id="topology-auto-delay"><option value="30">30 s</option><option value="60" selected>60 s</option>
+<option value="120">2 min</option><option value="300">5 min</option></select></label></div>
+{render_topology(self.state.topology)}
+<p class="muted">Vert : actif observé. Orange : service à vérifier. Cette vue
+est une topologie technique schématique, sans localisation physique.</p></div>
+</section></div>"""
+        self._send(render_layout("Carte", body))
+
+    def _context(self) -> None:
+        body = f"""<div class="grid"><section class="card wide"><h2>Contexte local</h2>
+{_value(local_context())}<p class="muted">L'heure et le fuseau sont lus localement.
+La météo nécessite des coordonnées consenties et une connexion Internet.</p></section>
+<section class="card"><h2>Météo</h2><form method="post" action="/context">
+{self._token()}<label>Latitude<input name="latitude" type="number" step="any" required></label>
+<label>Longitude<input name="longitude" type="number" step="any" required></label>
+<button type="button" onclick="locate()">UTILISER MA POSITION</button>
+<button type="submit">CHARGER LA MÉTÉO</button></form></section>
+{self._result("/context")}</div>"""
+        self._send(render_layout("Heure, zone et météo", body))
+
+    def _run_context(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            self.state.result_title = "Météo actuelle"
+            self.state.result_route = "/context"
+            self.state.result = weather_for_coordinates(
+                float(_field(data, "latitude")),
+                float(_field(data, "longitude")),
+            )
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/context")
+
+    def _tools(self) -> None:
+        requested = parse_qs(urlparse(self.path).query).get("tool", ["core"])[0]
+        active_tool = requested if requested in {"core", "qr", "camera", "nfc", "crypto", "packet"} else "core"
+        body = f"""<div class="grid"><section class="card full tool-picker" data-tool-picker data-active-tool="{escape(active_tool)}">
+<h2>Outils</h2><p class="muted">Choisissez un module. Les champs des autres modules restent accessibles sans envahir la page.</p>
+<div class="quick-grid">
+<a class="quick-toggle" data-tool-choice="core" href="/tools?tool=core"><span class="quick-icon">SYS</span><strong>Techniques</strong><span>Système, DNS, TLS, fichiers</span></a>
+<a class="quick-toggle" data-tool-choice="packet" href="/tools?tool=packet"><span class="quick-icon">PKT</span><strong>Packet Observer</strong><span>Logs réseau lisibles</span></a>
+<a class="quick-toggle" data-tool-choice="camera" href="/tools?tool=camera"><span class="quick-icon">CAM</span><strong>Scan caméra</strong><span>QR, image, OCR prévu</span></a>
+<a class="quick-toggle" data-tool-choice="qr" href="/tools?tool=qr"><span class="quick-icon">QR</span><strong>QR Code</strong><span>Générer, lire, décoder</span></a>
+<a class="quick-toggle" data-tool-choice="nfc" href="/tools?tool=nfc"><span class="quick-icon">NFC</span><strong>NFC</strong><span>Lecture, écriture lab</span></a>
+<a class="quick-toggle" data-tool-choice="crypto" href="/tools?tool=crypto"><span class="quick-icon">HSH</span><strong>Hash / Crypto</strong><span>Empreintes, Base64, XOR</span></a>
+</div></section>
+<section class="card wide" data-tool-section="core"><h2>Outils techniques</h2>
+<form method="post" action="/tools">{self._token()}
+<label>Action<select name="action"><option value="system">Audit du système local</option>
+<option value="hash">Hash SHA-256 d'un texte</option><option value="dns">Résolution DNS</option>
+<option value="tls">Inspection TLS</option><option value="config">Configuration locale</option>
+<option value="permissions">Permissions d'un chemin</option>
+<option value="log">Analyser un journal</option>
+<option value="script">Analyser un script</option>
+<option value="payload">Analyser un payload factice</option>
+<option value="password">Évaluer un mot de passe local</option>
+<option value="b64encode">Encoder en Base64</option>
+<option value="b64decode">Décoder du Base64</option></select></label>
+<label>Valeur ou chemin<input name="value"
+placeholder="Texte, domaine ou chemin relatif, ex. lab_workspace/suspicious.log"></label>
+<button type="submit">EXÉCUTER</button></form></section>
+<section class="card" data-tool-section="core"><h2>Limite des fichiers</h2><p class="muted">
+Pour protéger l'appareil, le GUI analyse uniquement les fichiers présents dans
+le dossier de la toolbox. Les chemins absolus extérieurs sont refusés.</p>
+<a href="/lab">Préparer les artefacts du laboratoire</a></section>
+<section class="card full" data-tool-section="qr"><span class="eyebrow">QR Code</span>
+<h2>Generer ou lire un QR</h2><p class="muted">Texte, URL, Wi-Fi, contact, mission recon SC,
+note ou payload pedagogique inoffensif. Les URL sont signalees avant ouverture.</p>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="qr_generate">
+<label>Type<select name="qr_mode">
+<option value="text">Texte</option><option value="url">URL</option>
+<option value="wifi">Wi-Fi</option><option value="contact">Contact</option>
+<option value="mission">Mission recon SC</option><option value="note">Note</option>
+<option value="lab_payload">Payload pedagogique inoffensif</option></select></label>
+<label>Texte, URL, mission ou note<textarea name="qr_text" rows="3"
+placeholder="https://example.org ou note de mission"></textarea></label>
+<div class="recon-fields"><label>SSID Wi-Fi<input name="qr_ssid" placeholder="Lab-WiFi"></label>
+<label>Mot de passe Wi-Fi<input name="qr_password" placeholder="optionnel si nopass"></label>
+<label>Securite<select name="qr_security"><option value="WPA">WPA/WPA2</option>
+<option value="WEP">WEP</option><option value="nopass">nopass</option></select></label></div>
+<div class="recon-fields"><label>Nom contact<input name="qr_name" placeholder="Nom"></label>
+<label>Telephone<input name="qr_phone" placeholder="+33..."></label>
+<label>Email<input name="qr_email" placeholder="contact@example.org"></label></div>
+<label class="check"><input type="checkbox" name="keep" checked>Ajouter au rapport/timeline locale.</label>
+<button type="submit">GENERER</button></form>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="qr_read_file">
+<label>Lire depuis une image locale<input name="value" placeholder="lab_workspace/qr.png"></label>
+<button type="submit">LIRE IMAGE</button></form>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="qr_decode_wifi">
+<label>Decoder un contenu Wi-Fi<textarea name="value" rows="2"
+placeholder="WIFI:T:WPA;S:Classe;P:secret;;"></textarea></label>
+<button type="submit">DECODER WIFI</button></form></section>
+<section class="card full" id="camera-scan" data-tool-section="camera"><span class="eyebrow">Scan camera</span>
+<h2>Scanner image, QR ou texte</h2><p class="muted">Utilise le materiel camera du navigateur quand il est disponible.
+Le scan QR reste local. L'OCR texte sera branche ensuite avec un moteur dedie.</p>
+<div class="recon-fields"><label>Image ou camera<input id="camera-scan-file" type="file"
+accept="image/*" capture="environment"></label><label>Resultat<textarea id="camera-scan-output"
+rows="5" placeholder="Le contenu QR ou le texte extrait apparaitra ici."></textarea></label></div>
+<div class="action-row"><button type="button" id="camera-scan-qr">SCANNER QR</button>
+<button type="button" id="camera-scan-copy">COPIER</button></div>
+<div class="notice" id="camera-scan-status">Sur mobile, le champ image peut ouvrir directement la camera.</div>
+</section>
+<section class="card full" data-tool-section="nfc"><span class="eyebrow">NFC Tools</span>
+<h2>Lire, ecrire ou decoder un tag</h2><p class="muted">Lecture locale si le materiel le permet,
+ecriture simple texte/URL/mission, parsing NDEF de lab et historique. Aucune emulation de badge.</p>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="nfc_tool">
+<label>Mode<select name="nfc_mode">
+<option value="scan">Lire un tag</option><option value="parse_hex">Decoder NDEF hex lab</option>
+<option value="write_text">Ecrire un texte</option><option value="write_url">Ecrire une URL</option>
+<option value="write_mission">Ecrire une mission recon SC</option>
+<option value="lesson">Lecon securite NFC</option></select></label>
+<label>Contenu, URL ou NDEF hex<textarea name="value" rows="4"
+placeholder="D10105540266724F4B ou https://example.org"></textarea></label>
+<label>Timeout lecture<input type="number" name="nfc_timeout" min="1" max="60" value="5"></label>
+<label class="check"><input type="checkbox" name="keep">Ajouter a la timeline locale.</label>
+<button type="submit">EXECUTER NFC</button></form>
+<div class="notice">Sur Termux, il faut Termux:API, le paquet termux-api et les permissions NFC/proximite selon Android.</div>
+</section>
+<section class="card full" data-tool-section="crypto"><span class="eyebrow">Hash / Crypto pedagogique</span>
+<h2>Empreintes, encodage et chiffrement demo</h2><p class="muted">SHA-256, SHA-512,
+BLAKE2, MD5 pedagogique, detection de format probable, Base64 et XOR avec cle connue.</p>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="crypto_tool">
+<label>Operation<select name="crypto_mode">
+<option value="hash">Calculer un hash</option><option value="identify">Identifier un hash probable</option>
+<option value="b64encode">Base64 encode</option><option value="b64decode">Base64 decode</option>
+<option value="xor_encrypt">Chiffrer demo XOR</option><option value="xor_decrypt">Dechiffrer demo XOR</option></select></label>
+<label>Algorithme<select name="crypto_algorithm">
+<option value="sha256">SHA-256</option><option value="sha512">SHA-512</option>
+<option value="blake2b">BLAKE2b</option><option value="md5">MD5 pedagogique</option></select></label>
+<label>Texte, hash ou Base64<textarea name="value" rows="4"></textarea></label>
+<label>Cle connue pour XOR<input name="crypto_key" placeholder="cle de demonstration"></label>
+<label class="check"><input type="checkbox" name="keep">Conserver le resultat comme artefact.</label>
+<button type="submit">EXECUTER</button></form></section>
+<section class="card full" data-tool-section="packet"><span class="eyebrow">Mini Wireshark pedagogique</span>
+<h2>Packet Observer</h2><p class="muted">Collez quelques lignes de trafic ou laissez vide pour
+charger une demo. L'outil lit des logs fournis : il ne capture pas d'interface
+reseau et ne tente jamais de dechiffrer HTTPS.</p>
+<form method="post" action="/tools">{self._token()}
+<input type="hidden" name="action" value="packet">
+<label>Flux ou lignes de log<textarea name="value" rows="7"
+placeholder="192.168.1.10 -> 140.82.121.4 TCP 51544 443 SYN github.com"></textarea></label>
+<label class="check"><input type="checkbox" name="keep" checked>Ajouter a la timeline et aux donnees structurees.</label>
+<button type="submit">ANALYSER LE TRAFIC</button></form></section>
+{self._result("/tools")}</div>"""
+        self._send(render_layout("Outils", body))
+
+    def _run_tools(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            action = _field(data, "action")
+            value = _field(data, "value")
+            if action == "system":
+                result: Any = dict(audit_system())
+            elif action == "hash":
+                result = {"algorithm": "sha256", "digest": hash_text(value)}
+            elif action == "dns":
+                result = dns_lookup(value)
+            elif action == "tls":
+                result = inspect_tls(value)
+            elif action == "config":
+                result = audit_local_configuration()
+            elif action == "permissions":
+                result = audit_path(_workspace_path(value))
+            elif action == "log":
+                result = analyze_log(_workspace_path(value))
+            elif action == "script":
+                result = analyze_script(_workspace_path(value))
+            elif action == "payload":
+                result = analyze_payload_file(_workspace_path(value))
+            elif action == "password":
+                result = analyze_password(value)
+            elif action == "b64encode":
+                result = {"encoded": base64_encode(value)}
+            elif action == "b64decode":
+                result = {"decoded": base64_decode(value)}
+            elif action == "qr_generate":
+                result = _qr_payload(data)
+                if _checked(data, "keep"):
+                    risk = str(result.get("risk", {}).get("level", "info"))
+                    result["records"] = _save_tool_record("qr_code", "QR Code", result, risk)
+            elif action == "qr_read_file":
+                result = {
+                    "mode": "qr_tool",
+                    "summary": "QR Code lu depuis une image locale.",
+                    "content": read_qr_from_file(str(_workspace_path(value))),
+                    "preview": "",
+                    "risk": {"level": "info", "reason": "Lecture locale sans envoi Internet."},
+                    "limitations": ["La lecture depend des bibliotheques optionnelles pyzbar/zbar ou OpenCV."],
+                }
+            elif action == "qr_decode_wifi":
+                decoded = decode_qr_wifi(value)
+                result = {
+                    "mode": "qr_tool",
+                    "summary": "QR Wi-Fi decode.",
+                    "content": decoded,
+                    "preview": "",
+                    "risk": {"level": "attention", "reason": "Un QR Wi-Fi peut contenir un secret reseau."},
+                    "limitations": ["Ne partagez ce contenu qu'avec les personnes autorisees."],
+                }
+            elif action == "nfc_tool":
+                result = _nfc_payload(data)
+                if _checked(data, "keep"):
+                    result["records"] = _save_tool_record("nfc", "NFC Tools", result)
+            elif action == "crypto_tool":
+                mode = _field(data, "crypto_mode", "hash")
+                algorithm = _field(data, "crypto_algorithm", "sha256")
+                key = _field(data, "crypto_key")
+                if mode == "hash":
+                    result = {
+                        "summary": f"Hash {algorithm} calcule.",
+                        "algorithm": algorithm,
+                        "digest": hash_generate(value, algorithm),
+                        "warning": "MD5 est conserve uniquement pour l'apprentissage et l'identification historique."
+                        if algorithm == "md5" else "",
+                    }
+                elif mode == "identify":
+                    result = {"summary": "Formats de hash probables.", "matches": identify_hash(value)}
+                elif mode == "b64encode":
+                    result = {"summary": "Base64 encode.", "encoded": base64_encode(value)}
+                elif mode == "b64decode":
+                    result = {"summary": "Base64 decode.", "decoded": base64_decode(value)}
+                elif mode == "xor_encrypt":
+                    result = {
+                        "summary": "Chiffrement demo XOR.",
+                        "encoded": xor_encrypt(value, key),
+                        "warning": "XOR illustre le concept mais ne protege pas de vraies donnees.",
+                    }
+                elif mode == "xor_decrypt":
+                    result = {
+                        "summary": "Dechiffrement demo XOR avec cle connue.",
+                        "decoded": xor_decrypt(value, key),
+                        "warning": "XOR est un lab pedagogique uniquement.",
+                    }
+                else:
+                    raise ValueError("Operation crypto inconnue.")
+                if _checked(data, "keep"):
+                    result["records"] = _save_tool_record("hash_crypto", "Hash / Crypto", result)
+            elif action == "packet":
+                result = observe_packets(value)
+                if _checked(data, "keep"):
+                    result["records"] = _save_packet_records(result)
+            else:
+                raise ValueError("Outil inconnu.")
+            self.state.result_title = "Résultat technique"
+            self.state.result_route = "/tools"
+            self.state.result = result
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        tool_by_action = {
+            "packet": "packet",
+            "qr_generate": "qr",
+            "qr_read_file": "qr",
+            "qr_decode_wifi": "qr",
+            "nfc_tool": "nfc",
+            "crypto_tool": "crypto",
+        }
+        self._redirect(f"/tools?tool={tool_by_action.get(_field(data, 'action', 'core'), 'core')}")
+
+    def _wireless(self) -> None:
+        body = f"""<div class="grid"><section class="card full" data-tabs>
+<span class="eyebrow">Sans-fil</span><h2>Wi-Fi Analyzer & Bluetooth Radar</h2>
+<p class="muted">Collecte locale via les API autorisees du systeme. Aucune connexion forcee, capture,
+desauthentification ou appairage n'est effectue. Les positions Wi-Fi/Bluetooth restent approximatives.</p>
+<div class="tabs"><button class="tab-button active" type="button"
+data-tab="tools">Outils</button><button class="tab-button" type="button"
+data-tab="wpa">Lab WPA2</button></div>
+<div class="tab-panel active" data-panel="tools"><div class="scanner-grid">
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">WIFI</span>
+<div><h3>Wi-Fi Analyzer</h3><p class="muted">SSID, BSSID si disponible, RSSI, canal, frequence, securite et reseau connecte.</p></div></div>
+<div class="meta-row"><span class="risk-badge">observation</span><span class="status-badge">position approximative</span></div>
+<form method="post" action="/wireless">{self._token()}<input type="hidden" name="action" value="wifi">
+<label class="check"><input type="checkbox" name="keep" checked>Creer artefacts, timeline et correlations.</label>
+<button type="submit">LANCER WIFI ANALYZER</button></form></article>
+
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">BT</span>
+<div><h3>Bluetooth Radar</h3><p class="muted">Appareils connus ou visibles, nom, adresse si disponible et proximite indicative.</p></div></div>
+<div class="meta-row"><span class="risk-badge">observation</span><span class="status-badge">radar</span></div>
+<form method="post" action="/wireless">{self._token()}<input type="hidden" name="action" value="bluetooth">
+<label class="check"><input type="checkbox" name="keep" checked>Creer fiche Bluetooth, timeline et correlation.</label>
+<button type="submit">LANCER BLUETOOTH RADAR</button></form></article>
+
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">TEL</span>
+<div><h3>Radio mobile locale</h3><p class="muted">Operateur et etat radio du telephone qui execute la toolbox, jamais d'un tiers.</p></div></div>
+<form method="post" action="/wireless">{self._token()}<input type="hidden" name="action" value="carrier">
+<button type="submit">LIRE CET APPAREIL</button></form></article>
+
+<article class="scanner-card"><div class="tool-head"><span class="quick-icon">SYS</span>
+<div><h3>Diagnostic sans-fil</h3><p class="muted">Capacites disponibles selon Windows, Linux, macOS ou Termux.</p></div></div>
+<form method="post" action="/wireless">{self._token()}<input type="hidden" name="action" value="diagnostic">
+<button type="submit">DIAGNOSTIQUER</button></form></article>
+</div><div class="notice">Windows peut exiger l'autorisation de localisation pour lister les reseaux voisins.
+Android/Termux exige Termux:API, le paquet <code>termux-api</code> et les permissions Localisation/Appareils a proximite.</div></div>
+<div class="tab-panel" data-panel="wpa"><h2>Lab WPA2 hors ligne</h2>
+<form method="post" action="/wireless">{self._token()}
+<input type="hidden" name="action" value="wifi_lab">
+<label>SSID fictif<input name="ssid" value="CTOS-LAB" required></label>
+<label>Mot de passe temporaire<input type="password" name="secret" required></label>
+<label>Candidats, un par ligne<textarea name="candidates" rows="6"
+required>motdepasse
+classe-2026
+password</textarea></label>
+<button type="submit">TESTER HORS LIGNE</button></form></div></section>
+{self._result("/wireless")}</div>"""
+        self._send(render_layout("Wi-Fi et Bluetooth", body))
+
+    def _run_wireless(self, data: dict[str, list[str]]) -> None:
+        self._clear()
+        try:
+            action = _field(data, "action")
+            if action == "wifi":
+                result = wifi_scan()
+            elif action == "bluetooth":
+                result = bluetooth_inventory()
+            elif action == "carrier":
+                result = mobile_operator_info()
+            elif action == "environment":
+                result = {
+                    "identity": local_device_identity(),
+                    "wifi": wifi_scan(),
+                    "bluetooth": bluetooth_inventory(),
+                    "mobile_operator": mobile_operator_info(),
+                }
+            elif action == "diagnostic":
+                result = wireless_diagnostics()
+            elif action == "wifi_lab":
+                ssid = _field(data, "ssid", "CTOS-LAB")
+                secret = _field(data, "secret")
+                candidates = _field(data, "candidates").splitlines()
+                result = crack_wpa2_demo(
+                    ssid,
+                    derive_wpa2_pmk(ssid, secret),
+                    candidates,
+                )
+                result["notice"] = (
+                    "Le secret est affiché uniquement dans cette page et n'est pas enregistré."
+                )
+            else:
+                raise ValueError("Action sans-fil inconnue.")
+            if action in {"wifi", "bluetooth"} and _checked(data, "keep"):
+                result["records"] = _save_wireless_records(result, action)
+            self.state.result_title = "Résultat sans-fil"
+            self.state.result_route = "/wireless"
+            self.state.result = result
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/wireless")
+
+    def _report(self, query: str) -> None:
+        name = parse_qs(query).get("name", [""])[0]
+        report = next((path for path in list_reports() if path.name == name), None)
+        if not report:
+            self._send(render_layout("Rapport introuvable", "<div class='notice error'>Rapport invalide.</div>"), 404)
+            return
+        self._send(render_layout(
+            report.name,
+            f"<section class='card full'><pre>{escape(read_report(report))}</pre></section>",
+        ))
+
+    def _settings(self) -> None:
+        settings = load_settings()
+        feedback = ""
+        if self.state.message:
+            feedback = f"<div class='notice'>{escape(self.state.message)}</div>"
+            self.state.message = ""
+        if self.state.error:
+            feedback = f"<div class='notice error'>{escape(self.state.error)}</div>"
+            self.state.error = ""
+        themes = (
+            ("core", "SC", "#79ff3d"),
+            ("violet", "Violet", "#d600a9"),
+            ("github", "Bleu GitHub", "#58a6ff"),
+            ("terminal", "Vert terminal", "#39ff88"),
+            ("ocean", "Bleu océan", "#00c8ff"),
+            ("amber", "Ambre", "#ffad22"),
+        )
+        theme_choices = "".join(
+            f'<label class="theme-choice"><input type="radio" name="theme" '
+            f'value="{key}"{" checked" if settings.theme == key else ""}>'
+            f'<span class="theme-swatch"><strong style="color:{color}">● {label}</strong>'
+            "</span></label>"
+            for key, label, color in themes
+        )
+        body = f"""{feedback}<section class="card full" data-tabs>
+<h2>Préférences locales</h2>
+<form method="post" action="/settings">{self._token()}
+<div class="tabs"><button class="tab-button active" type="button"
+data-tab="appearance">Apparence</button><button class="tab-button" type="button"
+data-tab="behavior">Comportement</button><button class="tab-button" type="button"
+data-tab="network">Réseau</button></div>
+<div class="tab-panel active" data-panel="appearance"><div class="theme-grid">
+{theme_choices}</div>
+<label class="switch"><span><strong>Glassmorphism</strong><br>
+<span class="muted">Transparence et flou des panneaux</span></span>
+<input type="checkbox" name="glass_effect"{" checked" if settings.glass_effect else ""}>
+<span class="switch-track"></span></label>
+<label>Opacité du verre
+<span class="range-row"><input type="range" name="glass_opacity" min="0.15" max="0.95"
+step="0.05" value="{settings.glass_opacity:.2f}">
+<strong id="glass-opacity-value">{settings.glass_opacity:.2f}</strong></span></label>
+<fieldset class="mode-slider"><legend>Mode global</legend><div class="mode-track" data-mode-track="app" data-value="{settings.app_color_mode}">
+<label><input type="radio" name="app_color_mode" value="auto"{" checked" if settings.app_color_mode == "auto" else ""}><span>Auto</span></label>
+<label><input type="radio" name="app_color_mode" value="light"{" checked" if settings.app_color_mode == "light" else ""}><span>Clair</span></label>
+<label><input type="radio" name="app_color_mode" value="dark"{" checked" if settings.app_color_mode == "dark" else ""}><span>Sombre</span></label>
+</div></fieldset>
+</div>
+<div class="tab-panel" data-panel="behavior">
+<label>Langue<select name="language">
+<option value="fr"{" selected" if settings.language == "fr" else ""}>Français</option>
+<option value="en"{" selected" if settings.language == "en" else ""}>English</option>
+</select></label><label>Rapports<select name="report_mode">
+<option value="ask"{" selected" if settings.report_mode == "ask" else ""}>Demander</option>
+<option value="auto"{" selected" if settings.report_mode == "auto" else ""}>Automatique</option>
+<option value="off"{" selected" if settings.report_mode == "off" else ""}>Désactivé</option>
+</select></label>
+<label class="switch"><span>Afficher les explications</span>
+<input type="checkbox" name="show_lessons"{" checked" if settings.show_lessons else ""}>
+<span class="switch-track"></span></label></div>
+<div class="tab-panel" data-panel="network"><label>Ports par défaut
+<input name="default_ports" value="{escape(settings.default_ports)}"></label>
+<label>Délai TCP<input type="number" step="0.1" min="0.1" max="5"
+name="scan_timeout" value="{settings.scan_timeout}"></label>
+<label class="switch"><span>Préférer Nmap</span>
+<input type="checkbox" name="prefer_nmap"{" checked" if settings.prefer_nmap else ""}>
+<span class="switch-track"></span></label>
+<label class="switch"><span>Autoriser la corrélation DNS</span>
+<input type="checkbox" name="internet_correlation"{" checked" if settings.internet_correlation else ""}>
+<span class="switch-track"></span></label></div>
+<button type="submit">ENREGISTRER</button></form></section>"""
+        self._send(render_layout("Paramètres", body))
+
+    def _save_settings(self, data: dict[str, list[str]]) -> None:
+        try:
+            previous_settings = load_settings()
+            settings = Settings(
+                language=_field(data, "language", "fr"),
+                report_mode=_field(data, "report_mode", "ask"),
+                theme=_field(data, "theme", "core"),
+                app_color_mode=_field(data, "app_color_mode", "auto"),
+                map_color_mode=previous_settings.map_color_mode,
+                glass_effect=_checked(data, "glass_effect"),
+                glass_opacity=float(_field(data, "glass_opacity", "0.46")),
+                default_ports=_field(data, "default_ports", "1-1024"),
+                prefer_nmap=_checked(data, "prefer_nmap"),
+                show_lessons=_checked(data, "show_lessons"),
+                internet_correlation=_checked(data, "internet_correlation"),
+                scan_timeout=float(_field(data, "scan_timeout", "0.4")),
+            )
+            save_settings(settings)
+            self.state.message = "Paramètres enregistrés."
+        except (ValueError, OSError) as exc:
+            self.state.error = str(exc)
+        self._redirect("/settings")
+
+    def _clear(self) -> None:
+        self.state.result = None
+        self.state.result_title = ""
+        self.state.result_route = ""
+        self.state.error = ""
+
+    def _redirect(self, location: str) -> None:
+        self.send_response(303)
+        self.send_header("Location", location)
+        self.end_headers()
+
+    def _send(self, content: str, status: int = 200) -> None:
+        payload = content.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "strict-origin-when-cross-origin")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; style-src 'unsafe-inline' https://unpkg.com; "
+            "script-src 'unsafe-inline' https://unpkg.com; worker-src blob:; "
+            "img-src 'self' data: https://tile.openstreetmap.org "
+            "https://*.tile.opentopomap.org https://*.basemaps.cartocdn.com "
+            "https://demotiles.maplibre.org blob:; "
+            "connect-src 'self' https://nominatim.openstreetmap.org https://router.project-osrm.org "
+            "https://unpkg.com https://demotiles.maplibre.org; "
+            "frame-src https://www.openstreetmap.org",
+        )
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def _send_asset(self, content: str, content_type: str, status: int = 200) -> None:
+        payload = content.encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", f"{content_type}; charset=utf-8")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, format: str, *args: object) -> None:
+        print(f"[GUI] {self.address_string()} - {format % args}")
+
+
+class ToolboxServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, address: tuple[str, int]) -> None:
+        super().__init__(address, ToolboxHandler)
+        self.state = WebState()
+
+
+def serve_gui(port: int = 8765, lan: bool = False, open_browser: bool = True) -> None:
+    if port < 1024 or port > 65535:
+        raise ValueError("Choisissez un port entre 1024 et 65535.")
+    host = "0.0.0.0" if lan else "127.0.0.1"
+    server = ToolboxServer((host, port))
+    local_url = f"http://127.0.0.1:{port}"
+    print("\nCYBER TOOLBOX // INTERFACE GRAPHIQUE")
+    print(f"Adresse locale : {local_url}")
+    if lan:
+        try:
+            address = socket.gethostbyname(socket.gethostname())
+        except socket.gaierror:
+            address = "<adresse-ip-du-pc>"
+        print(f"Accès réseau privé : http://{address}:{port}")
+        print("Utilisez --lan uniquement sur un réseau de confiance.")
+    print("Arrêt : Ctrl+C")
+    if open_browser:
+        try:
+            webbrowser.open(local_url)
+        except webbrowser.Error:
+            pass
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
